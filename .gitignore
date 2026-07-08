@@ -1,0 +1,29 @@
+# Build
+build/
+*.o
+*.a
+*.so
+*.dylib
+*.vst3
+*.component
+*.pkg
+
+# JUCE (submodule — keep tracked but exclude build artefacts)
+JUCE/
+
+# IDE
+.vscode/
+.idea/
+*.xcodeproj/
+*.xcworkspace/
+
+# macOS
+.DS_Store
+._*
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+install_manifest.txt

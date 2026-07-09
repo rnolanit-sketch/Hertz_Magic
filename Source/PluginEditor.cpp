@@ -26,8 +26,13 @@ HertzLookAndFeel::HertzLookAndFeel()
 
 void HertzLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& l)
 {
-    g.setColour(textDimCol()); // skin-aware via helper
-    g.setFont(l.getFont());
+    // Slider value readouts get the bright text + a readable minimum size;
+    // section labels use the (brightened) dim text.
+    const bool isValueBox=dynamic_cast<juce::Slider*>(l.getParentComponent())!=nullptr;
+    g.setColour(isValueBox?textBrightCol():textDimCol());
+    auto f=l.getFont();
+    if(f.getHeight()<12.f) f.setHeight(isValueBox?13.f:12.f);
+    g.setFont(f);
     g.drawText(l.getText(),l.getLocalBounds(),l.getJustificationType());
 }
 
@@ -163,7 +168,7 @@ void HertzLookAndFeel::drawToggleButton(juce::Graphics& g,juce::ToggleButton& b,
         g.setColour(on?acc:VintageColours::panelStroke.darker()); g.fillEllipse(lamp);
         if(on){g.setColour(acc.withAlpha(0.4f));g.fillEllipse(lamp.expanded(3.f));}
         g.setColour(on?VintageColours::textSilk:VintageColours::textDim);
-        g.setFont(juce::Font(juce::FontOptions(10.f,juce::Font::bold)));
+        g.setFont(juce::Font(juce::FontOptions(11.f,juce::Font::bold)));
         g.drawText(b.getButtonText(),r.withTrimmedLeft(12.f),juce::Justification::centred);
         return;
     }
@@ -182,7 +187,7 @@ void HertzLookAndFeel::drawToggleButton(juce::Graphics& g,juce::ToggleButton& b,
     g.setColour(on?acc.withAlpha(0.16f):panel); g.fillRoundedRectangle(r,3.f);
     g.setColour(on?acc:(hi?textDim.brighter():panelStroke)); g.drawRoundedRectangle(r,3.f,1.f);
     g.setColour(on?acc:textDim);
-    g.setFont(juce::Font(juce::FontOptions(11.f,juce::Font::bold)));
+    g.setFont(juce::Font(juce::FontOptions(12.f,juce::Font::bold)));
     g.drawText(b.getButtonText(),r,juce::Justification::centred);
 }
 
@@ -200,13 +205,19 @@ void EqCurveDisplay::paint(juce::Graphics& g)
     double sr=48000.0; auto r=getLocalBounds().toFloat();
     g.setColour(display); g.fillRoundedRectangle(r,4.f);
     g.setColour(gridLine);
-    for(double f:{100.0,1000.0,10000.0}) g.drawVerticalLine((int)freqToX(f),0.f,r.getBottom());
+    for(double f:{50.0,100.0,200.0,500.0,1000.0,2000.0,5000.0,10000.0})
+        g.drawVerticalLine((int)freqToX(f),0.f,r.getBottom());
     for(float db:{-12.f,-6.f,6.f,12.f}) g.drawHorizontalLine((int)dbToY(db),0.f,r.getRight());
     g.setColour(panelStroke); g.drawHorizontalLine((int)dbToY(0.f),0.f,r.getRight());
-    g.setColour(textDim.withAlpha(0.6f)); g.setFont(juce::Font(juce::FontOptions(10.f)));
-    g.drawText("100",(int)freqToX(100.0)+3,getHeight()-13,30,10,juce::Justification::left);
-    g.drawText("1k",(int)freqToX(1000.0)+3,getHeight()-13,30,10,juce::Justification::left);
-    g.drawText("10k",(int)freqToX(10000.0)+3,getHeight()-13,30,10,juce::Justification::left);
+    g.setColour(textDim.withAlpha(0.8f)); g.setFont(juce::Font(juce::FontOptions(11.f)));
+    static const std::pair<double,const char*> fLbl[]={
+        {50.0,"50"},{100.0,"100"},{200.0,"200"},{500.0,"500"},
+        {1000.0,"1k"},{2000.0,"2k"},{5000.0,"5k"},{10000.0,"10k"}};
+    for(auto& fl:fLbl)
+        g.drawText(fl.second,(int)freqToX(fl.first)+3,getHeight()-14,34,11,juce::Justification::left);
+    g.setColour(textDim.withAlpha(0.65f)); g.setFont(juce::Font(juce::FontOptions(10.f)));
+    for(float db:{-12.f,-6.f,6.f,12.f})
+        g.drawText(juce::String((int)db),4,(int)dbToY(db)-11,26,10,juce::Justification::left);
 
     float lfB=apvts.getRawParameterValue("lf_boost")->load();
     float lfA=apvts.getRawParameterValue("lf_atten")->load();
@@ -372,8 +383,8 @@ void TapeDisplay::paint(juce::Graphics& g)
     drawReel(lx,phase,0.72f);          // supply reel
     drawReel(rx,phase*1.18f,0.5f);     // take-up reel spins a touch faster
 
-    g.setColour(textDim); g.setFont(juce::Font(juce::FontOptions(9.5f)));
-    g.drawText("PHOENIX 15 IPS",area.removeFromBottom(12.f),juce::Justification::centred);
+    g.setColour(textDim); g.setFont(juce::Font(juce::FontOptions(10.5f)));
+    g.drawText("PHOENIX 15 IPS",area.removeFromBottom(13.f),juce::Justification::centred);
 }
 
 //==============================================================================
@@ -428,8 +439,8 @@ void ValveDisplay::paint(juce::Graphics& g)
     for(float fx:{0.22f,0.42f,0.62f,0.82f}){
         float px=tube.getX()+tubeW*fx;
         g.drawLine(px,bB,px,bB+tubeH*0.07f,2.5f);}
-    g.setColour(textDim); g.setFont(juce::Font(juce::FontOptions(9.5f)));
-    g.drawText("ECC83",tube.withY(bB+tubeH*0.08f).withHeight(12.f).expanded(20.f,0.f),
+    g.setColour(textDim); g.setFont(juce::Font(juce::FontOptions(10.5f)));
+    g.drawText("ECC83",tube.withY(bB+tubeH*0.08f).withHeight(13.f).expanded(20.f,0.f),
         juce::Justification::centred);
 }
 
@@ -465,7 +476,7 @@ void MultibandGRDisplay::paint(juce::Graphics& g)
     for(double f:{100.0,1000.0,10000.0}) g.drawVerticalLine((int)freqToX(f),2.f,H);
 
     // draggable crossover dividers with handles + freq labels
-    g.setFont(juce::Font(juce::FontOptions(8.f,juce::Font::bold)));
+    g.setFont(juce::Font(juce::FontOptions(9.5f,juce::Font::bold)));
     for(auto pr:{std::pair<float,float>{px1,x1},{px2,x2}})
     {
         g.setColour(textBright.withAlpha(0.85f));
@@ -479,8 +490,8 @@ void MultibandGRDisplay::paint(juce::Graphics& g)
         g.drawText(txt,(int)pr.first-24,(int)H+1,48,11,juce::Justification::centred);
     }
 
-    g.setColour(textDim.withAlpha(0.6f));
-    g.setFont(juce::Font(juce::FontOptions(7.5f,juce::Font::bold)));
+    g.setColour(textDim.withAlpha(0.75f));
+    g.setFont(juce::Font(juce::FontOptions(9.f,juce::Font::bold)));
     g.drawText("LOW",4,3,30,10,juce::Justification::left);
     g.drawText("HIGH",getWidth()-34,3,30,10,juce::Justification::right);
 }
@@ -516,6 +527,85 @@ void MultibandGRDisplay::mouseUp(const juce::MouseEvent&)
     if(dragXo) if(auto*p=apvts.getParameter(dragXo==1?"xover1":"xover2"))
         p->endChangeGesture();
     dragXo=0;
+}
+
+//==============================================================================
+void IdealInputMeter::paint(juce::Graphics& g)
+{
+    auto r=getLocalBounds().toFloat();
+    g.setColour(display); g.fillRoundedRectangle(r,3.f);
+    g.setColour(gridLine); g.drawRoundedRectangle(r,3.f,1.f);
+
+    const float zoneTop=dbToY(kIdealDb+kZoneDb), zoneBot=dbToY(kIdealDb-kZoneDb);
+    const bool inZone=rmsDb>=kIdealDb-kZoneDb&&rmsDb<=kIdealDb+kZoneDb;
+    const bool hot=rmsDb>kIdealDb+kZoneDb;
+
+    // sweet-spot zone
+    g.setColour(accent.withAlpha(inZone?0.30f:0.14f));
+    g.fillRect(r.getX()+2.f,zoneTop,r.getWidth()-4.f,zoneBot-zoneTop);
+    g.setColour(accent.withAlpha(0.7f));
+    g.drawHorizontalLine((int)dbToY(kIdealDb),r.getX()+2.f,r.getRight()-2.f);
+
+    // dB scale ticks
+    g.setColour(textDim.withAlpha(0.75f));
+    g.setFont(juce::Font(juce::FontOptions(9.5f)));
+    for(float db:{0.f,-6.f,-12.f,-18.f,-24.f,-30.f,-36.f})
+    {
+        const float y=dbToY(db);
+        g.drawHorizontalLine((int)y,r.getX()+2.f,r.getX()+6.f);
+        g.drawText(juce::String((int)db),(int)r.getX()+7,(int)y-5,26,10,
+            juce::Justification::left);
+    }
+
+    // RMS bar
+    const juce::Colour barCol=hot?accentOrange:(inZone?accent:accent.withAlpha(0.55f));
+    const float barTop=dbToY(rmsDb);
+    auto bar=juce::Rectangle<float>(r.getRight()-16.f,barTop,12.f,r.getHeight()-14.f-barTop);
+    if(bar.getHeight()>0.f){ g.setColour(barCol.withAlpha(0.9f)); g.fillRoundedRectangle(bar,2.f); }
+
+    // peak tick
+    if(peakDisp>-40.f)
+    {
+        g.setColour(textBright.withAlpha(0.85f));
+        g.drawLine(r.getRight()-17.f,dbToY(peakDisp),r.getRight()-3.f,dbToY(peakDisp),1.6f);
+    }
+
+    // RMS readout — accent when in the sweet spot
+    g.setColour(inZone?accent:(hot?accentOrange:textDim));
+    g.setFont(juce::Font(juce::FontOptions(11.f,juce::Font::bold)));
+    g.drawText(rmsDb<=-89.f?juce::String("--"):juce::String(rmsDb,1),
+        r.removeFromBottom(13.f),juce::Justification::centred);
+}
+
+//==============================================================================
+void SpectralTameDisplay::paint(juce::Graphics& g)
+{
+    auto r=getLocalBounds().toFloat();
+    g.setColour(display); g.fillRoundedRectangle(r,4.f);
+    g.setColour(panelStroke); g.drawRoundedRectangle(r,4.f,1.f);
+
+    static const char* fl[]={"1k8","2k8","4k3","6k5","10k","15k"};
+    const float H=r.getHeight()-13.f;
+    const float bw=(r.getWidth()-8.f)/6.f;
+
+    // 3 / 6 / 9 dB gridlines
+    g.setColour(gridLine);
+    for(int i=1;i<4;++i)
+        g.drawHorizontalLine((int)(2.f+(H-4.f)*(float)i/4.f),r.getX()+2.f,r.getRight()-2.f);
+
+    for(int b=0;b<6;++b)
+    {
+        auto lane=juce::Rectangle<float>(4.f+bw*(float)b,2.f,bw,H-2.f).reduced(2.f,0.f);
+        g.setColour(accent.withAlpha(0.08f));
+        g.fillRect(lane);
+        const float norm=juce::jlimit(0.f,1.f,disp[b]/12.f);
+        g.setColour(accent.withAlpha(0.85f));
+        g.fillRect(lane.withHeight(juce::jmax(norm*(H-4.f),disp[b]>0.01f?2.f:0.f)));
+        g.setColour(textDim.withAlpha(0.85f));
+        g.setFont(juce::Font(juce::FontOptions(9.f,juce::Font::bold)));
+        g.drawText(fl[b],lane.withY(H+1.f).withHeight(11.f).expanded(3.f,0.f),
+            juce::Justification::centred);
+    }
 }
 
 //==============================================================================
@@ -594,8 +684,16 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     setupToggle(satMsBtn,satMsAt,"sat_ms","M/S",&satModule);
     satMsBtn.onClick=[this]{ layoutModules(); repaint(); };
 
+    // Spectral tame (fixed, post-saturation)
+    addAndMakeVisible(ssDisplay);
+    setupKnob(ssDepth,"ss_depth","DEPTH",this);
+    setupKnob(ssSens,"ss_sens","SENS",this);
+    setupToggle(ssOnBtn,ssOnAt,"ss_on","IN",this);
+
+    // Input stage: ideal meter + trim knob live in the left rail
     addAndMakeVisible(inMeter); addAndMakeVisible(outMeter);
-    setupSlider(inTrim,"in_trim","INPUT",this);
+    setupKnob(inTrim,"in_trim","INPUT",this);
+    inTrim.s.setTextBoxStyle(juce::Slider::TextBoxBelow,false,62,16);   // narrow rail
     setupSlider(mix,"mix","MIX",this);
     setupSlider(outTrim,"out_trim","OUTPUT",this);
 
@@ -619,7 +717,10 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     for(auto* m:modules)
         m->onDragEnd=[this](ModulePanel* d,juce::Point<int> pos){onModuleDrop(d,pos);};
 
-    setSize(3*kModuleW+4*kGap+72+kFinalW+kGap, 52+kModuleH+86+6+16);
+    // width: rails + comp + sat + spectral + final + gaps
+    // height: header + eq strip + gap + module row + gap + master + footer + margins
+    setSize(kInRailW+36+2*kModuleW+kSpectralW+kFinalW+5*kGap,
+            52+kEqH+8+kModuleH+6+80+14+8);
     applySkinToAll();
     startTimerHz(30);
 }
@@ -630,11 +731,11 @@ void HertzMagicAudioProcessorEditor::setupKnob(Knob& k,const juce::String& pid,
     const juce::String& name,juce::Component* parent)
 {
     k.s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    k.s.setTextBoxStyle(juce::Slider::TextBoxBelow,false,78,16);
+    k.s.setTextBoxStyle(juce::Slider::TextBoxBelow,false,80,18);
     parent->addAndMakeVisible(k.s);
     k.l.setText(name,juce::dontSendNotification);
     k.l.setJustificationType(juce::Justification::centred);
-    k.l.setFont(juce::Font(juce::FontOptions(10.5f,juce::Font::bold)));
+    k.l.setFont(juce::Font(juce::FontOptions(12.f,juce::Font::bold)));
     parent->addAndMakeVisible(k.l);
     k.a=std::make_unique<SliderAt>(processor.apvts,pid,k.s);
 }
@@ -643,11 +744,11 @@ void HertzMagicAudioProcessorEditor::setupSlider(Knob& k,const juce::String& pid
     const juce::String& name,juce::Component* parent)
 {
     k.s.setSliderStyle(juce::Slider::LinearHorizontal);
-    k.s.setTextBoxStyle(juce::Slider::TextBoxRight,false,70,16);
+    k.s.setTextBoxStyle(juce::Slider::TextBoxRight,false,72,18);
     parent->addAndMakeVisible(k.s);
     k.l.setText(name,juce::dontSendNotification);
     k.l.setJustificationType(juce::Justification::centredLeft);
-    k.l.setFont(juce::Font(juce::FontOptions(10.5f,juce::Font::bold)));
+    k.l.setFont(juce::Font(juce::FontOptions(12.f,juce::Font::bold)));
     parent->addAndMakeVisible(k.l);
     k.a=std::make_unique<SliderAt>(processor.apvts,pid,k.s);
 }
@@ -691,33 +792,44 @@ void HertzMagicAudioProcessorEditor::onModuleDrop(ModulePanel* dropped,juce::Poi
 //==============================================================================
 void HertzMagicAudioProcessorEditor::layoutModules()
 {
-    int x=moduleRow.getX();
+    // EQ is a fixed landscape strip on top; Comp/Sat share the row below in
+    // the order they appear in chainOrder. Dragging still swaps processing
+    // order (shown in the header chain readout).
+    eqModule.setBounds(eqRow);
+
+    int rowX=moduleRow.getX();
     for(int slot=0;slot<3;++slot)
     {
-        int mi=processor.chainOrder[(size_t)slot];
-        auto* m=modules[(size_t)mi];
-        m->setBounds(x,moduleRow.getY(),kModuleW,kModuleH);
-        x+=kModuleW+kGap;
+        const int mi=processor.chainOrder[(size_t)slot];
+        if(mi==0) continue;
+        modules[(size_t)mi]->setBounds(rowX,moduleRow.getY(),kModuleW,kModuleH);
+        rowX+=kModuleW+kGap;
+    }
 
+    for(int mi=0;mi<3;++mi)
+    {
+        auto* m=modules[(size_t)mi];
         auto inner=m->getLocalBounds().reduced(10,8);
         inner.removeFromTop(24);   // header strip
 
-        if(mi==0) // EQ
+        if(mi==0) // EQ — landscape: wide curve, band groups under their ranges
         {
             eqOnBtn.setBounds(m->getLocalBounds().reduced(10,4).removeFromTop(20).removeFromRight(40).withHeight(17));
-            eqCurve.setBounds(inner.removeFromTop(int((kModuleH-60)*0.36f)));
+            eqCurve.setBounds(inner.removeFromTop(inner.getHeight()-114));
             inner.removeFromTop(6);
-            auto a=inner;
-            int cw=a.getWidth()/4;
-            int rh=a.getHeight()/3;
-            auto r1=a.removeFromTop(rh); auto r2=a.removeFromTop(rh); auto r3=a;
-            Knob* k1[]={&lfBoost,&lfAtten,&lfFreq,&hfAttenSel};
-            Knob* k2[]={&hfBoost,&hfBw,&hfFreq,&hfAtten};
-            Knob* k3[]={&n1Freq,&n1Q,&n2Freq,&n2Q};
-            for(int i=0;i<4;++i){
-                layoutKnob(*k1[i],r1.removeFromLeft(cw).reduced(2));
-                layoutKnob(*k2[i],r2.removeFromLeft(cw).reduced(2));
-                layoutKnob(*k3[i],r3.removeFromLeft(cw).reduced(2));}
+            // group widths follow the log frequency axis: lows left, highs right
+            auto lowGrp  =inner.removeFromLeft(int(inner.getWidth()*0.25f));
+            auto notchGrp=inner.removeFromLeft(int(inner.getWidth()*0.45f));
+            auto highGrp =inner;
+            Knob* kl[]={&lfBoost,&lfAtten,&lfFreq};
+            Knob* kn2[]={&n1Freq,&n1Q,&n2Freq,&n2Q};
+            Knob* kh[]={&hfBoost,&hfBw,&hfFreq,&hfAtten,&hfAttenSel};
+            int cw=lowGrp.getWidth()/3;
+            for(auto* k:kl) layoutKnob(*k,lowGrp.removeFromLeft(cw).reduced(3,2));
+            cw=notchGrp.getWidth()/4;
+            for(auto* k:kn2) layoutKnob(*k,notchGrp.removeFromLeft(cw).reduced(3,2));
+            cw=highGrp.getWidth()/5;
+            for(auto* k:kh) layoutKnob(*k,highGrp.removeFromLeft(cw).reduced(3,2));
         }
         else if(mi==1) // Comp
         {
@@ -813,8 +925,12 @@ void HertzMagicAudioProcessorEditor::timerCallback()
     mbGR.setValues(processor.bandGrDb[0].load(),processor.bandGrDb[1].load(),
                    processor.bandGrDb[2].load(),acc);
 
-    inMeter.setValue(processor.inLevelDb.load(),acc);
+    inMeter.setValues(processor.inRmsDb.load(),processor.inLevelDb.load(),acc);
     outMeter.setValue(processor.outLevelDb.load(),acc);
+
+    float ssg[HertzMagicAudioProcessor::kSSBands];
+    for(int b=0;b<HertzMagicAudioProcessor::kSSBands;++b) ssg[b]=processor.ssGrDb[b].load();
+    ssDisplay.setValues(ssg,HertzMagicAudioProcessor::kSSBands,acc);
 
     limMeter.setValue(processor.limGrDb.load(),acc);
     rmsLabel.setText(juce::String(processor.rmsDb.load(),1)+" dB",juce::dontSendNotification);
@@ -892,10 +1008,6 @@ void HertzMagicAudioProcessorEditor::paintVintageBackground(juce::Graphics& g)
         juce::Font(juce::FontOptions(26.f,juce::Font::bold)),"HERTZ ");
     g.drawText("MAGIC",headerArea.withLeft(mx),juce::Justification::centredLeft);
 
-    // Engraved sub-label
-    g.setColour(VintageColours::textDim); g.setFont(juce::Font(juce::FontOptions(10.f,juce::Font::bold)));
-    g.drawText("PROFESSIONAL MASTERING PROCESSOR",headerArea,juce::Justification::centred);
-
     // Module panel fills — slightly different from the faceplate (recessed look)
     for(int slot=0;slot<3;++slot)
     {
@@ -919,13 +1031,20 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
     const auto panelFill=vtg?VintageColours::panel:panel;
     const auto panelStrk=vtg?VintageColours::panelStroke:panelStroke;
 
-    // flow arrows
-    g.setColour(acc.withAlpha(0.45f));
-    for(int slot=0;slot<2;++slot){
-        auto* m=modules[(size_t)processor.chainOrder[(size_t)slot]];
-        float ax=(float)m->getRight()+kGap*0.5f, ay=(float)moduleRow.getCentreY();
-        juce::Path p; p.addTriangle(ax+4.f,ay,ax-3.f,ay-5.f,ax-3.f,ay+5.f);
-        g.fillPath(p);}
+    // header chain readout — live processing order
+    {
+        static const char* names[]={"EQ","COMP","SAT"};
+        const juce::String dot(juce::CharPointer_UTF8(" \xc2\xb7 "));
+        juce::String chain=juce::String("IN")+dot;
+        for(int slot=0;slot<3;++slot){
+            chain+=names[processor.chainOrder[(size_t)slot]];
+            if(processor.chainOrder[(size_t)slot]==2) chain+=dot+"TAME";
+            chain+=dot;}
+        chain+=juce::String("CLIP/LIM")+dot+"OUT";
+        g.setColour(txtDim2);
+        g.setFont(juce::Font(juce::FontOptions(11.f,juce::Font::bold)));
+        g.drawText(chain,headerArea.withTrimmedRight(110),juce::Justification::centred);
+    }
 
     // module titles + drag hints
     static const char* titles[]={"HERTZTEQ EQ","MULTIBAND COMP","SATURATION"};
@@ -933,7 +1052,7 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
         int mi=processor.chainOrder[(size_t)slot];
         auto* m=modules[(size_t)mi];
         g.setColour(acc);
-        g.setFont(juce::Font(juce::FontOptions(vtg?10.f:11.f,juce::Font::bold)));
+        g.setFont(juce::Font(juce::FontOptions(12.f,juce::Font::bold)));
         if(vtg){
             // engraved letter-spacing look
             g.setColour(txtDim2);
@@ -943,14 +1062,25 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
         }
         g.drawText(titles[mi],m->getBounds().reduced(10,0).removeFromTop(26),
             juce::Justification::centredLeft);
-        g.setColour(txtDim2.withAlpha(0.5f));
-        g.setFont(juce::Font(juce::FontOptions(9.5f)));
+        g.setColour(txtDim2.withAlpha(0.6f));
+        g.setFont(juce::Font(juce::FontOptions(10.5f)));
         g.drawText(juce::String(juce::CharPointer_UTF8("\xe2\x8c\x96 DRAG")),
-            m->getBounds().reduced(10,0).removeFromTop(26),juce::Justification::centredRight);
+            m->getBounds().reduced(10,0).removeFromTop(26).withTrimmedRight(mi==0?50:0),
+            juce::Justification::centredRight);
+        if(mi==0){
+            // faint separators between LOW | NOTCH | HIGH knob groups
+            auto strip=m->getBounds().reduced(10,8).withTrimmedTop(24);
+            auto knobStrip=strip.removeFromBottom(114);
+            const int lowR=knobStrip.getX()+int(knobStrip.getWidth()*0.25f);
+            const int notchR=lowR+int((knobStrip.getWidth()-int(knobStrip.getWidth()*0.25f))*0.45f);
+            g.setColour(panelStrk.brighter(0.25f));
+            for(int sx:{lowR,notchR})
+                g.drawVerticalLine(sx,(float)knobStrip.getY()+4.f,(float)knobStrip.getBottom()-4.f);
+        }
         if(mi==2){
             auto inner3=m->getBounds().reduced(10,8).withTrimmedTop(28);
             g.setColour(acc.withAlpha(0.85f));
-            g.setFont(juce::Font(juce::FontOptions(9.5f,juce::Font::bold)));
+            g.setFont(juce::Font(juce::FontOptions(10.5f,juce::Font::bold)));
             g.drawText("TAPE",inner3.removeFromLeft(inner3.getWidth()/2).removeFromTop(16),
                 juce::Justification::centredLeft);
             g.drawText("VALVE",m->getBounds().reduced(10,8).withTrimmedTop(28)
@@ -960,7 +1090,7 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
             const bool msOn=processor.apvts.getRawParameterValue("sat_ms")->load()>0.5f;
             if(msOn){
                 g.setColour(acc);
-                g.setFont(juce::Font(juce::FontOptions(8.5f,juce::Font::bold)));
+                g.setFont(juce::Font(juce::FontOptions(9.5f,juce::Font::bold)));
                 // tape column mid/side labels
                 auto tapeArea=m->getBounds().reduced(10,8).withTrimmedTop(28+22+int(kModuleH*0.32f)+8);
                 auto tapeH=tapeArea.getWidth()/2;
@@ -974,31 +1104,51 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
         g.setColour(panelFill); g.fillRoundedRectangle(mr->toFloat(),6.f);
         g.setColour(panelStrk); g.drawRoundedRectangle(mr->toFloat(),6.f,1.f);}
 
+    // fixed spectral tame panel (post-saturation)
+    {
+        g.setColour(panelFill); g.fillRoundedRectangle(spectralPanel.toFloat(),6.f);
+        g.setColour(acc.withAlpha(0.55f));
+        g.drawRoundedRectangle(spectralPanel.toFloat(),6.f,1.2f);
+        g.setColour(acc); g.setFont(juce::Font(juce::FontOptions(12.f,juce::Font::bold)));
+        g.drawText("SPECTRAL TAME",
+            spectralPanel.reduced(10,0).removeFromTop(26),juce::Justification::centredLeft);
+        g.setColour(acc.withAlpha(0.35f));
+        g.fillRect((float)spectralPanel.getX()+10.f,(float)spectralPanel.getY()+27.f,
+            (float)spectralPanel.getWidth()-20.f,1.5f);
+        g.setColour(txtDim2.withAlpha(0.6f)); g.setFont(juce::Font(juce::FontOptions(10.f)));
+        g.drawText("POST-SAT",spectralPanel.reduced(10,0).removeFromTop(26)
+            .withTrimmedRight(46),juce::Justification::centredRight);
+    }
+
     // fixed final panel
     {
         g.setColour(panelFill); g.fillRoundedRectangle(finalPanel.toFloat(),6.f);
         g.setColour(acc.withAlpha(0.55f));
         g.drawRoundedRectangle(finalPanel.toFloat(),6.f,1.2f);
-        g.setColour(acc); g.setFont(juce::Font(juce::FontOptions(11.f,juce::Font::bold)));
+        g.setColour(acc); g.setFont(juce::Font(juce::FontOptions(12.f,juce::Font::bold)));
         g.drawText(juce::String(juce::CharPointer_UTF8("CLIP \xc2\xb7 LIMITER")),
             finalPanel.reduced(10,0).removeFromTop(26),juce::Justification::centredLeft);
-        g.setColour(txtDim2.withAlpha(0.5f)); g.setFont(juce::Font(juce::FontOptions(9.5f)));
+        g.setColour(txtDim2.withAlpha(0.6f)); g.setFont(juce::Font(juce::FontOptions(10.f)));
         g.drawText("FIXED",finalPanel.reduced(10,0).removeFromTop(26),juce::Justification::centredRight);
         g.setColour(acc.withAlpha(0.35f));
         g.fillRect((float)finalPanel.getX()+10.f,(float)finalPanel.getY()+27.f,
             (float)finalPanel.getWidth()-20.f,1.5f);
-        g.setColour(txtDim2); g.setFont(juce::Font(juce::FontOptions(9.5f,juce::Font::bold)));
-        g.drawText("GR",limMeter.getBounds().translated(0,-13).withHeight(11),juce::Justification::centred);
-        g.drawText("RMS",rmsLabel.getBounds().translated(0,-11).withHeight(10),juce::Justification::centred);
-        g.drawText("LUFS M",lufsLabel.getBounds().translated(0,-11).withHeight(10),juce::Justification::centred);
+        g.setColour(txtDim2); g.setFont(juce::Font(juce::FontOptions(10.5f,juce::Font::bold)));
+        g.drawText("GR",limMeter.getBounds().translated(0,-13).withHeight(12),juce::Justification::centred);
+        g.drawText("RMS",rmsLabel.getBounds().translated(0,-12).withHeight(11),juce::Justification::centred);
+        g.drawText("LUFS M",lufsLabel.getBounds().translated(0,-12).withHeight(11),juce::Justification::centred);
     }
-    g.setColour(txtDim2); g.setFont(juce::Font(juce::FontOptions(9.5f,juce::Font::bold)));
-    g.drawText("IN",inMeter.getBounds().translated(0,-13).withHeight(11),juce::Justification::centred);
-    g.drawText("OUT",outMeter.getBounds().translated(0,-13).withHeight(11),juce::Justification::centred);
+    g.setColour(txtDim2); g.setFont(juce::Font(juce::FontOptions(10.5f,juce::Font::bold)));
+    g.drawText("INPUT",inMeter.getBounds().translated(0,-14).withHeight(12),juce::Justification::centred);
+    g.drawText("OUT",outMeter.getBounds().translated(0,-14).withHeight(12),juce::Justification::centred);
+    g.setColour(acc.withAlpha(0.8f)); g.setFont(juce::Font(juce::FontOptions(9.5f,juce::Font::bold)));
+    g.drawText(juce::String(juce::CharPointer_UTF8("RMS \xe2\x86\x92 -18")),
+        juce::Rectangle<int>(meterLeft.getX(),
+        inMeter.getBottom()+1,meterLeft.getWidth(),12),juce::Justification::centred);
 
     g.setColour(panelFill); g.fillRoundedRectangle(masterPanel.toFloat(),6.f);
     g.setColour(panelStrk); g.drawRoundedRectangle(masterPanel.toFloat(),6.f,1.f);
-    g.setColour(acc); g.setFont(juce::Font(juce::FontOptions(11.f,juce::Font::bold)));
+    g.setColour(acc); g.setFont(juce::Font(juce::FontOptions(12.f,juce::Font::bold)));
     g.drawText("MASTER",masterPanel.reduced(14,6).removeFromTop(14),juce::Justification::topLeft);
 
     // skin toggle button outline
@@ -1024,16 +1174,32 @@ void HertzMagicAudioProcessorEditor::resized()
     skinToggleBtn.setBounds(headerArea.withTrimmedRight(8).removeFromRight(82).withSizeKeepingCentre(80,22));
     r.removeFromBottom(14);
 
-    const int meterW=36;
-    meterLeft=r.removeFromLeft(meterW).reduced(0,4);
-    meterRight=r.removeFromRight(meterW).reduced(0,4);
+    meterLeft=r.removeFromLeft(kInRailW).reduced(0,4);
+    meterRight=r.removeFromRight(36).reduced(0,4);
     r.reduce(0,4);
 
     masterPanel=r.removeFromBottom(80);
     r.removeFromBottom(6);
-    moduleRow=r.reduced(0,0).withTrimmedLeft(kGap/2);
+    eqRow=r.removeFromTop(kEqH).withTrimmedLeft(kGap/2).withTrimmedRight(2);
+    r.removeFromTop(8);
+    moduleRow=r.withTrimmedLeft(kGap/2);
     finalPanel=moduleRow.removeFromRight(kFinalW);
     moduleRow.removeFromRight(kGap);
+    spectralPanel=moduleRow.removeFromRight(kSpectralW);
+    moduleRow.removeFromRight(kGap);
+
+    // ---- Spectral tame panel: GR display + DEPTH / SENS ----
+    {
+        auto a=spectralPanel.reduced(10,8);
+        a.removeFromTop(24);
+        ssOnBtn.setBounds(spectralPanel.reduced(10,4).removeFromTop(20)
+            .removeFromRight(36).withHeight(17));
+        ssDisplay.setBounds(a.removeFromTop(120));
+        a.removeFromTop(8);
+        auto ka=a.removeFromTop(juce::jmin(a.getHeight(),110));
+        layoutKnob(ssDepth,ka.removeFromLeft(ka.getWidth()/2).reduced(4,0));
+        layoutKnob(ssSens,ka.reduced(4,0));
+    }
 
     // ---- Final panel: clipper -> limiter (fixed) ----
     {
@@ -1062,15 +1228,19 @@ void HertzMagicAudioProcessorEditor::resized()
     }
 
     {
-        auto ml=meterLeft.reduced(8); ml.removeFromTop(16);
-        inMeter.setBounds(ml.withWidth(16).withCentre({meterLeft.getCentreX(),ml.getCentreY()}));
+        // Input rail: ideal-level meter with the INPUT trim knob below it
+        auto ml=meterLeft.reduced(5); ml.removeFromTop(16);
+        auto trimArea=ml.removeFromBottom(96);
+        ml.removeFromBottom(14);   // "RMS -> -18" hint painted here
+        inMeter.setBounds(ml);
+        layoutKnob(inTrim,trimArea);
         auto mr=meterRight.reduced(8); mr.removeFromTop(16);
         outMeter.setBounds(mr.withWidth(16).withCentre({meterRight.getCentreX(),mr.getCentreY()}));
     }
     {
         auto a=masterPanel.reduced(14,6); a.removeFromTop(15);
-        int cw=a.getWidth()/3;
-        for(auto* k:{&inTrim,&mix,&outTrim}){
+        int cw=a.getWidth()/2;
+        for(auto* k:{&mix,&outTrim}){
             auto col=a.removeFromLeft(cw).reduced(8,0);
             k->l.setBounds(col.removeFromTop(12));
             k->s.setBounds(col);}

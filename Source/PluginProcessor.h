@@ -47,12 +47,16 @@ public:
     std::array<int, kNumModules> chainOrder { 0, 1, 2 };  // EQ -> Comp -> Sat
 
     std::atomic<float> inLevelDb  { -90.0f };
+    std::atomic<float> inRmsDb    { -90.0f };
     std::atomic<float> outLevelDb { -90.0f };
     std::atomic<float> heat       { 0.0f };
     std::atomic<float> bandGrDb[3] { {0.0f}, {0.0f}, {0.0f} };
     std::atomic<float> limGrDb { 0.0f };
     std::atomic<float> rmsDb   { -90.0f };
     std::atomic<float> lufsDb  { -90.0f };
+
+    static constexpr int kSSBands = 6;
+    std::atomic<float> ssGrDb[kSSBands] { {0.f},{0.f},{0.f},{0.f},{0.f},{0.f} };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -90,12 +94,18 @@ private:
     float sideLPzOut[2]{};           // output of side LP (what gets saturated)
     void processSaturation (juce::dsp::AudioBlock<float>&);
 
+    // ---- Spectral tame (post-saturation dynamic resonance suppression) ----
+    juce::dsp::IIR::Filter<float> ssDet[kSSBands];      // mono detection bandpasses
+    juce::dsp::IIR::Filter<float> ssCut[kSSBands][2];   // per-channel dynamic cuts
+    float ssEnvDb[kSSBands]{}, ssGrSm[kSSBands]{};
+    void processSpectralTame (juce::AudioBuffer<float>&);
+
     // ---- Final stage (FIXED at end): clipper -> lookahead limiter ----
     std::unique_ptr<juce::dsp::Oversampling<float>> clipOversampler;
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> laDelay { 8192 };
     float limEnv = 1.0f, limAvgGr = 0.0f;
     juce::dsp::IIR::Filter<float> kShelf[2], kHip[2];   // K-weighting (BS.1770)
-    float rmsState = 0.0f, lufsState = 0.0f;
+    float rmsState = 0.0f, lufsState = 0.0f, inRmsState = 0.0f;
     int lookaheadSamples = 0;
     float pokeFast = 0.0f, pokeSlow = 0.0f;             // transient detector envs
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> deltaDelay { 16384 };

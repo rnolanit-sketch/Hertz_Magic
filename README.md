@@ -5,8 +5,11 @@
 A mastering-grade Audio Unit for Logic Pro. Signal path:
 
 ```
-IN · HERTZTEQ EQ · MULTIBAND COMP · TAPE→VALVE · OUT   (drag to reorder)
+IN · HERTZTEQ EQ · MULTIBAND COMP · TAPE→VALVE · SPECTRAL TAME · CLIP/LIMITER · OUT
 ```
+
+EQ / Comp / Saturation are drag-reorderable; Spectral Tame is glued to the
+saturation output and the clipper/limiter is always last.
 
 The interface runs phosphor green when the signal is clean and shifts to
 orange as you push it — the heat follows both the valve drive and the
@@ -75,9 +78,25 @@ Each has its own drive and IN switch. Both are unity-gain at low level —
 they only touch the peaks, so density you hear is saturation, not loudness.
 The whole UI shifts green → orange as drive and gain reduction build.
 
+### SPECTRAL TAME (post-saturation)
+Soothe-style dynamic top-end smoothing — six bands from 1.8 to 15 kHz.
+Each band is compared against the overall spectral tilt; anything poking
+above it (sizzle, harsh tops, digital glare) gets pulled down dynamically
+and released in ~120 ms. **DEPTH** sets how hard offending bands are pulled,
+**SENS** sets how easily they trigger. Zero latency; the GR display shows
+which bands are working. Start around DEPTH 4 / SENS 5 for "tame digital
+tops" behaviour.
+
+### INPUT STAGE (left rail)
+God Particle-style ideal-level metering: the meter shows post-trim **RMS**
+with a sweet-spot zone at **−18 dBFS RMS (±2 dB)**. Turn the INPUT knob until
+the bar sits in the zone (it lights up in the accent colour when you're
+there; orange means too hot). The white tick is the peak. Hitting the zone
+puts every stage after it in its designed operating range.
+
 ### MASTER
-Input / Mix / Output faders. The dry path for Mix is latency-compensated,
-so parallel settings stay phase-coherent. IN/OUT meters flank the plugin.
+Mix / Output faders (Input lives in the left rail). The dry path for Mix is
+latency-compensated, so parallel settings stay phase-coherent.
 
 ---
 

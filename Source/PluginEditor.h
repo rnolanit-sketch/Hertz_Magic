@@ -12,8 +12,8 @@ namespace HertzColours
     const juce::Colour gridLine     { 0xff17211b };
     const juce::Colour accentGreen  { 0xff2ee59d };
     const juce::Colour accentOrange { 0xffff7a1a };
-    const juce::Colour textDim      { 0xff86a495 };
-    const juce::Colour textBright   { 0xffd7e6dd };
+    const juce::Colour textDim      { 0xffa8c2b4 };   // brightened for readability
+    const juce::Colour textBright   { 0xffe6f2ea };
     const juce::Colour bandLow  { 0xff4fc3f7 };
     const juce::Colour bandMid  { 0xff2ee59d };
     const juce::Colour bandHigh { 0xffffb74d };
@@ -31,8 +31,8 @@ namespace VintageColours
     const juce::Colour accentCold   { 0xffb8860b };   // dark gold (idle)
     const juce::Colour accentHot    { 0xffff6600 };   // incandescent orange (pushed)
     const juce::Colour cream        { 0xfff5f0e0 };   // bakelite knob body
-    const juce::Colour textSilk     { 0xfff0ead8 };   // silk-screened label
-    const juce::Colour textDim      { 0xff8a8070 };   // embossed dim
+    const juce::Colour textSilk     { 0xfff5f0e2 };   // silk-screened label
+    const juce::Colour textDim      { 0xffaba08a };   // embossed dim (brightened)
     const juce::Colour vu           { 0xffe8c840 };   // VU needle / scale
     const juce::Colour bandLow  { 0xffcd853f };   // saddle brown
     const juce::Colour bandMid  { 0xffb8860b };   // dark goldenrod
@@ -162,6 +162,43 @@ private:
 };
 
 //==============================================================================
+/** God Particle-style ideal input meter: RMS bar with a target "sweet spot"
+    zone at -18 dBFS RMS. Set the input trim until the bar sits in the zone. */
+class IdealInputMeter : public juce::Component
+{
+public:
+    static constexpr float kIdealDb=-18.f, kZoneDb=2.f;   // -20..-16 sweet spot
+    void setValues(float rmsDb_,float peakDb_,juce::Colour a)
+    {
+        rmsDb=rmsDb_;
+        peakDisp=juce::jmax(peakDb_,peakDisp-0.8f);
+        accent=a; repaint();
+    }
+    void paint(juce::Graphics&) override;
+private:
+    float dbToY(float db) const
+    { return juce::jmap(juce::jlimit(-40.f,0.f,db),-40.f,0.f,(float)getHeight()-14.f,4.f); }
+    float rmsDb=-90.f, peakDisp=-90.f;
+    juce::Colour accent{HertzColours::accentGreen};
+};
+
+//==============================================================================
+/** Six-band GR display for the spectral tame section (soothe-style). */
+class SpectralTameDisplay : public juce::Component
+{
+public:
+    void setValues(const float* g,int count,juce::Colour a)
+    {
+        for(int i=0;i<count&&i<6;++i) disp[i]=juce::jmax(g[i],disp[i]*0.88f);
+        accent=a; repaint();
+    }
+    void paint(juce::Graphics&) override;
+private:
+    float disp[6]{};
+    juce::Colour accent{HertzColours::accentGreen};
+};
+
+//==============================================================================
 class ModulePanel : public juce::Component
 {
 public:
@@ -267,13 +304,21 @@ private:
     juce::ToggleButton tapeOnBtn,valveOnBtn,satMsBtn;
     std::unique_ptr<ButtonAt> tapeOnAt,valveOnAt,satMsAt;
 
+    // Spectral tame (fixed, post-saturation)
+    SpectralTameDisplay ssDisplay;
+    Knob ssDepth,ssSens;
+    juce::ToggleButton ssOnBtn; std::unique_ptr<ButtonAt> ssOnAt;
+
     // Meters + master
-    LevelMeter inMeter{LevelMeter::level},outMeter{LevelMeter::level};
+    IdealInputMeter inMeter;
+    LevelMeter outMeter{LevelMeter::level};
     Knob inTrim,outTrim,mix;
 
-    juce::Rectangle<int> headerArea,moduleRow,masterPanel,meterLeft,meterRight,finalPanel;
+    juce::Rectangle<int> headerArea,eqRow,moduleRow,masterPanel,meterLeft,meterRight,
+                         finalPanel,spectralPanel;
 
-    static constexpr int kModuleW=330, kModuleH=430, kGap=10, kFinalW=190;
+    static constexpr int kModuleW=330, kModuleH=380, kEqH=280, kGap=10,
+                         kFinalW=190, kSpectralW=210, kInRailW=74;
 
     void applySkinToAll();
     void paintDigitalBackground(juce::Graphics&);

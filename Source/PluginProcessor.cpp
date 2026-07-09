@@ -18,7 +18,12 @@ namespace IDs
     static const juce::String limOn="lim_on", limGain="lim_gain",
         limCeiling="lim_ceiling", limMode="lim_mode";
     static const juce::String poke="poke", pokeSolo="poke_solo", deltaOn="delta_on";
+    static const juce::String ssOn="ss_on", ssDepth="ss_depth", ssSens="ss_sens";
 }
+
+// Spectral tame band centres — the "digital tops" region
+static const float kSSFreqs[HertzMagicAudioProcessor::kSSBands] =
+    { 1800.f, 2800.f, 4300.f, 6500.f, 10000.f, 15000.f };
 
 static const float kLowFreqs[]       = { 20.f,30.f,60.f,100.f };
 static const float kHighBoostFreqs[] = { 3000.f,4000.f,5000.f,8000.f,10000.f,12000.f,16000.f };
@@ -169,6 +174,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
     layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::pokeSolo,1},"Poke Audition",false));
     layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::deltaOn,1},"Delta Monitor",false));
 
+    // ---- Spectral tame (soothe-style dynamic top-end smoothing, post-sat) ----
+    layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::ssOn,1},"Tame In",true));
+    layout.add(std::make_unique<P>(juce::ParameterID{IDs::ssDepth,1},"Tame Depth",
+        juce::NormalisableRange<float>(0.f,10.f,0.01f),4.f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction(pct)));
+    layout.add(std::make_unique<P>(juce::ParameterID{IDs::ssSens,1},"Tame Sens",
+        juce::NormalisableRange<float>(0.f,10.f,0.01f),5.f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction(pct)));
+
     return layout;
 }
 
@@ -244,8 +258,23 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     laDelay.setMaximumDelayInSamples(lookaheadSamples+8);
     laDelay.setDelay((float)lookaheadSamples);
     laDelay.reset();
-    limEnv=1.f; limAvgGr=0.f; rmsState=0.f; lufsState=0.f;
+    limEnv=1.f; limAvgGr=0.f; rmsState=0.f; lufsState=0.f; inRmsState=0.f;
     pokeFast=0.f; pokeSlow=0.f;
+
+    // Spectral tame: detection bandpasses (mono) + dynamic cut filters (flat)
+    for(int b=0;b<kSSBands;++b)
+    {
+        const float f=juce::jmin(kSSFreqs[b],(float)(sampleRate*0.45));
+        ssDet[b].coefficients=juce::dsp::IIR::Coefficients<float>::makeBandPass(sampleRate,f,2.0f);
+        ssDet[b].reset();
+        for(int ch=0;ch<2;++ch)
+        {
+            ssCut[b][ch].coefficients=juce::dsp::IIR::Coefficients<float>::makePeakFilter(
+                sampleRate,f,2.2f,1.0f);
+            ssCut[b][ch].reset();
+        }
+        ssEnvDb[b]=-90.f; ssGrSm[b]=0.f; ssGrDb[b].store(0.f);
+    }
 
     // K-weighting (ITU-R BS.1770): pre-shelf + RLB high-pass
     for(int ch=0;ch<2;++ch){
@@ -517,6 +546,94 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
 }
 
 //==============================================================================
+/*  Spectral tame — soothe-style dynamic top-end smoothing ("tame digital tops").
+    Six bands 1.8k–15k. Each band's envelope is compared against the average
+    energy across all bands (the spectral tilt); bands poking above the tilt
+    get pulled down with a dynamic peak cut. Fast attack, ~120 ms release,
+    zero latency. Always processed (flat filters are identity) so toggling is
+    click-free. */
+void HertzMagicAudioProcessor::processSpectralTame(juce::AudioBuffer<float>& buffer)
+{
+    const int numCh=juce::jmin(buffer.getNumChannels(),2);
+    const int n=buffer.getNumSamples();
+    if(n==0) return;
+
+    const bool  on    = apvts.getRawParameterValue("ss_on")->load()>0.5f;
+    const float depth = apvts.getRawParameterValue("ss_depth")->load()/10.f;
+    const float sens  = apvts.getRawParameterValue("ss_sens")->load();
+
+    // ---- Detection: mono sum through the six bandpasses ----
+    float ms[kSSBands]{};
+    {
+        auto* L=buffer.getReadPointer(0);
+        auto* R=numCh>1?buffer.getReadPointer(1):L;
+        for(int i=0;i<n;++i)
+        {
+            const float m=0.5f*(L[i]+R[i]);
+            for(int b=0;b<kSSBands;++b)
+            {
+                const float v=ssDet[b].processSample(m);
+                ms[b]+=v*v;
+            }
+        }
+    }
+
+    // ---- Block-rate envelopes + relative threshold against the tilt ----
+    const float sr=(float)currentSampleRate;
+    const float aAtk=1.f-std::exp(-(float)n/(0.003f*sr));   // ~3 ms
+    const float aRel=1.f-std::exp(-(float)n/(0.120f*sr));   // ~120 ms
+    float avg=0.f;
+    for(int b=0;b<kSSBands;++b)
+    {
+        const float db=10.f*std::log10(ms[b]/(float)n+1.0e-12f);
+        ssEnvDb[b]+=(db>ssEnvDb[b]?aAtk:aRel)*(db-ssEnvDb[b]);
+        avg+=ssEnvDb[b];
+    }
+    avg/=(float)kSSBands;
+
+    const float thr=juce::jmap(sens,0.f,10.f,10.f,0.f);   // high sens = triggers sooner
+    const bool active=on&&depth>0.001f;
+
+    for(int b=0;b<kSSBands;++b)
+    {
+        const float over=ssEnvDb[b]-avg-thr;
+        const float gr=active?juce::jlimit(0.f,12.f,over)*depth:0.f;
+        ssGrSm[b]+=(gr>ssGrSm[b]?0.55f:0.20f)*(gr-ssGrSm[b]);
+        if(ssGrSm[b]<0.005f) ssGrSm[b]=0.f;
+        ssGrDb[b].store(ssGrSm[b]);
+
+        // RBJ peaking cut written straight into the filter's coefficient
+        // storage — no allocation on the audio thread
+        const double f=juce::jmin((double)kSSFreqs[b],currentSampleRate*0.45);
+        const double w0=juce::MathConstants<double>::twoPi*f/currentSampleRate;
+        const double cosw=std::cos(w0), sinw=std::sin(w0);
+        const double A=std::pow(10.0,(double)-ssGrSm[b]/40.0);
+        const double alpha=sinw/(2.0*2.2);
+        const double a0=1.0+alpha/A;
+        const float c0=(float)((1.0+alpha*A)/a0), c1=(float)(-2.0*cosw/a0),
+                    c2=(float)((1.0-alpha*A)/a0), c3=(float)(-2.0*cosw/a0),
+                    c4=(float)((1.0-alpha/A)/a0);
+        for(int ch=0;ch<numCh;++ch)
+        {
+            auto* raw=ssCut[b][ch].coefficients->getRawCoefficients();
+            raw[0]=c0; raw[1]=c1; raw[2]=c2; raw[3]=c3; raw[4]=c4;
+        }
+    }
+
+    // ---- Apply the six dynamic cuts in series ----
+    for(int ch=0;ch<numCh;++ch)
+    {
+        auto* w=buffer.getWritePointer(ch);
+        for(int i=0;i<n;++i)
+        {
+            float x=w[i];
+            for(int b=0;b<kSSBands;++b) x=ssCut[b][ch].processSample(x);
+            w[i]=x;
+        }
+    }
+}
+
+//==============================================================================
 void HertzMagicAudioProcessor::processFinal(juce::AudioBuffer<float>& buffer)
 {
     const int numCh=juce::jmin(buffer.getNumChannels(),2);
@@ -633,12 +750,19 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
     outGain.setTargetValue(juce::Decibels::decibelsToGain(apvts.getRawParameterValue(IDs::outTrim)->load()));
     mixSmooth.setTargetValue(apvts.getRawParameterValue(IDs::mix)->load()/100.f);
 
-    float peakIn=0.f;
+    float peakIn=0.f, sumSqIn=0.f;
     for(int i=0;i<n;++i){
         float g=inGain.getNextValue();
-        for(int ch=0;ch<numCh;++ch){auto& s=buffer.getWritePointer(ch)[i];s*=g;peakIn=juce::jmax(peakIn,std::abs(s));}
+        for(int ch=0;ch<numCh;++ch){auto& s=buffer.getWritePointer(ch)[i];s*=g;peakIn=juce::jmax(peakIn,std::abs(s));sumSqIn+=s*s;}
     }
     inLevelDb.store(juce::Decibels::gainToDecibels(peakIn,-90.f));
+    // 300 ms RMS after input trim — feeds the ideal-level input meter
+    {
+        const float blockMs=sumSqIn/(float)juce::jmax(1,n*numCh);
+        const float a=1.f-std::exp(-(float)n/(0.3f*(float)currentSampleRate));
+        inRmsState+=a*(blockMs-inRmsState);
+        inRmsDb.store(10.f*std::log10(inRmsState+1.0e-10f));
+    }
 
     dryBuffer.setSize(numCh,n,false,false,true);
     deltaBuffer.setSize(numCh,n,false,false,true);
@@ -673,6 +797,8 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
         {
             processSaturation(block);   // always runs (constant latency); shapers
                                         // are identity when bypassed / zero drive
+            processSpectralTame(buffer); // soothe-style top-end smoothing, glued
+                                         // to the saturation output
         }
     }
 

@@ -7,6 +7,7 @@ namespace IDs
     static const juce::String eqOn="eq_on", lfBoost="lf_boost", lfAtten="lf_atten",
         lfFreq="lf_freq", hfBoost="hf_boost", hfBw="hf_bw", hfFreq="hf_freq",
         hfAtten="hf_atten", hfAttenSel="hf_atten_sel";
+    static const juce::String lcOn="lc_on", lcFreq="lc_freq";
     static const juce::String compOn="comp_on", xover1="xover1", xover2="xover2";
     static const juce::String thresh="thresh_", ratio="ratio_", attack="attack_",
         release="release_", makeup="makeup_", bandSolo="solo_", bandByp="byp_";
@@ -49,6 +50,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
         juce::AudioParameterFloatAttributes().withLabel("%")));
 
     layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::eqOn,1},"EQ In",true));
+
+    // Low cut — steep (24 dB/oct) high-pass for removing rumble/sub, up to 50 Hz
+    layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::lcOn,1},"Low Cut In",false));
+    layout.add(std::make_unique<P>(juce::ParameterID{IDs::lcFreq,1},"Low Cut",
+        juce::NormalisableRange<float>(10.f,50.f,0.1f,0.7f),24.f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+
     layout.add(std::make_unique<P>(juce::ParameterID{IDs::lfBoost,1},"Low Boost",
         juce::NormalisableRange<float>(0.f,10.f,0.01f),0.f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction(pct)));
@@ -236,8 +244,13 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     const int numCh=juce::jmax(1,getTotalNumOutputChannels());
     juce::dsp::ProcessSpec spec{sampleRate,(juce::uint32)samplesPerBlock,(juce::uint32)numCh};
 
-    for(auto* f:{&lfBoostShelf,&lfAttenShelf,&hfBoostPeak,&hfAttenShelf,&notch1,&notch2}){f->prepare(spec);f->reset();}
-    cLfBoost=-1; cN1F=-1; updateEqCoefficients();
+    for(auto* f:{&lfBoostShelf,&lfAttenShelf,&hfBoostPeak,&hfAttenShelf,&notch1,&notch2,
+                 &lowCutA,&lowCutB}){f->prepare(spec);f->reset();}
+    cLfBoost=-1; cN1F=-1; cLcFreq=-1; updateEqCoefficients();
+
+    // Analyser ring
+    for(auto& s:scopeBuf) s.store(0.f,std::memory_order_relaxed);
+    scopeWrite.store(0,std::memory_order_relaxed);
 
     prepareCrossovers(sampleRate);
     for(auto& b:bands) b.envDb=-90.f;
@@ -258,8 +271,14 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     laDelay.setMaximumDelayInSamples(lookaheadSamples+8);
     laDelay.setDelay((float)lookaheadSamples);
     laDelay.reset();
-    limEnv=1.f; limAvgGr=0.f; rmsState=0.f; lufsState=0.f; inRmsState=0.f;
+    limEnv=1.f; limAvgGr=0.f; inRmsState=0.f;
     pokeFast=0.f; pokeSlow=0.f;
+
+    // 3-second sliding windows for RMS + short-term LUFS
+    loudLen=juce::jmax(1,(int)std::lround(3.0*sampleRate));
+    rmsWin.assign((size_t)loudLen,0.f);
+    lufsWin.assign((size_t)loudLen,0.f);
+    rmsSum=lufsSum=0.0; loudPos=0;
 
     // Spectral tame: detection bandpasses (mono) + dynamic cut filters (flat)
     for(int b=0;b<kSSBands;++b)
@@ -331,15 +350,21 @@ void HertzMagicAudioProcessor::updateEqCoefficients()
     float n2F=apvts.getRawParameterValue(IDs::n2Freq)->load();
     float n2D=apvts.getRawParameterValue(IDs::n2Depth)->load();
     float n2Qv=apvts.getRawParameterValue(IDs::n2Q)->load();
+    float lcF=apvts.getRawParameterValue(IDs::lcFreq)->load();
 
     if(lfB==cLfBoost&&lfA==cLfAtten&&lfF==cLfFreq&&hfB==cHfBoost
        &&hfW==cHfBw&&hfF==cHfFreq&&hfA==cHfAtten&&hfS==cHfAttenSel
-       &&n1F==cN1F&&n1D==cN1D&&n1Qv==cN1Q&&n2F==cN2F&&n2D==cN2D&&n2Qv==cN2Q) return;
+       &&n1F==cN1F&&n1D==cN1D&&n1Qv==cN1Q&&n2F==cN2F&&n2D==cN2D&&n2Qv==cN2Q
+       &&lcF==cLcFreq) return;
     cLfBoost=lfB;cLfAtten=lfA;cLfFreq=lfF;cHfBoost=hfB;
     cHfBw=hfW;cHfFreq=hfF;cHfAtten=hfA;cHfAttenSel=hfS;
     cN1F=n1F;cN1D=n1D;cN1Q=n1Qv;cN2F=n2F;cN2D=n2D;cN2Q=n2Qv;
+    cLcFreq=lcF;
 
     double sr=currentSampleRate;
+    // Low cut: two cascaded Butterworth high-passes = LR4, 24 dB/oct
+    *lowCutA.state=*Coeffs::makeHighPass(sr,juce::jlimit(10.f,50.f,lcF),0.7071f);
+    *lowCutB.state=*Coeffs::makeHighPass(sr,juce::jlimit(10.f,50.f,lcF),0.7071f);
     float lowF=kLowFreqs[juce::jlimit(0,3,lfF)];
     *lfBoostShelf.state=*Coeffs::makeLowShelf(sr,lowF,0.55f,juce::Decibels::decibelsToGain(lfB*1.35f));
     *lfAttenShelf.state=*Coeffs::makeLowShelf(sr,lowF*1.5f,0.55f,juce::Decibels::decibelsToGain(-lfA*1.6f));
@@ -468,6 +493,9 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
     static const float charLPHi[] = { 19000.f, 16000.f, 12500.f };
     static const float charLPLo[] = { 16000.f, 13000.f, 10000.f };
 
+    // Harmonic-activity accumulators (how far each stage bends the signal)
+    double tapeDiffSq=0.0, tapeSigSq=0.0, valveDiffSq=0.0, valveSigSq=0.0;
+
     for(size_t ch=0;ch<up.getNumChannels()&&ch<2;++ch)
     {
         const float td  = tDriveArr[ch];
@@ -510,15 +538,23 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
                 xLow=sideLPz[ch];
                 x=x-xLow;   // only the high side gets saturated
             }
+            const float xPre=x;            // tape input
             if(doTape)
             {
                 float shaped=std::tanh(kt*x)/kt;
                 shaped+=even*shaped*shaped;
                 z+=lpA*(shaped-z);
                 x=z;
+                tapeDiffSq+=(double)(x-xPre)*(x-xPre);
+                tapeSigSq +=(double)xPre*xPre;
             }
+            const float xTape=x;           // valve input
             if(doValve)
+            {
                 x=(std::tanh(kv*(x+bias))-tb)/vNorm;
+                valveDiffSq+=(double)(x-xTape)*(x-xTape);
+                valveSigSq +=(double)xTape*xTape;
+            }
 
             // Recombine: add back the untouched low portion of the side
             if(isSide) x+=xLow;
@@ -528,6 +564,12 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
         }
         tapeLPz[ch]=z; dcX1[ch]=x1; dcY1[ch]=y1;
     }
+
+    // Publish stage "extremity" — RMS of added content relative to signal
+    auto act=[](double diff,double sig){ return sig<1.0e-9 ? 0.f
+        : juce::jlimit(0.f,1.f,(float)std::sqrt(diff/sig)*1.4f); };
+    tapeSat.store (act(tapeDiffSq,  tapeSigSq));
+    valveSat.store(act(valveDiffSq, valveSigSq));
 
     oversampler->processSamplesDown(block);
 
@@ -697,8 +739,6 @@ void HertzMagicAudioProcessor::processFinal(juce::AudioBuffer<float>& buffer)
     const float attC=1.f-std::exp(-1.f/(0.0008f*sr));
     const float relC=1.f-std::exp(-1.f/(0.001f*relMs*sr));
     const float avgC=1.f-std::exp(-1.f/(0.3f*sr));
-    const float rmsC=1.f-std::exp(-1.f/(0.3f*sr));
-    const float lufC=1.f-std::exp(-1.f/(0.4f*sr));
 
     auto* L=buffer.getWritePointer(0);
     auto* R=numCh>1?buffer.getWritePointer(1):nullptr;
@@ -725,18 +765,24 @@ void HertzMagicAudioProcessor::processFinal(juce::AudioBuffer<float>& buffer)
         maxGr=juce::jmax(maxGr,grNow);
         limAvgGr+=avgC*(grNow-limAvgGr);
 
-        // RMS (300 ms) + K-weighted momentary loudness (400 ms, BS.1770)
-        rmsState+=rmsC*((oL*oL+oR*oR)*0.5f-rmsState);
+        // 3-second sliding window: RMS + K-weighted short-term LUFS (BS.1770)
+        const double msR=((double)oL*oL+(double)oR*oR)*0.5;
+        rmsSum += msR - (double)rmsWin[(size_t)loudPos];
+        rmsWin[(size_t)loudPos]=(float)msR;
         const float kL=kHip[0].processSample(kShelf[0].processSample(oL));
         const float kR=kHip[1].processSample(kShelf[1].processSample(oR));
-        lufsState+=lufC*((kL*kL+kR*kR)-lufsState);
+        const double msK=(double)kL*kL+(double)kR*kR;
+        lufsSum += msK - (double)lufsWin[(size_t)loudPos];
+        lufsWin[(size_t)loudPos]=(float)msK;
+        if(++loudPos>=loudLen) loudPos=0;
 
         L[i]=oL; if(R) R[i]=oR;
     }
 
     limGrDb.store(maxGr);
-    rmsDb.store(10.f*std::log10(rmsState+1.0e-10f));
-    lufsDb.store(-0.691f+10.f*std::log10(lufsState+1.0e-10f));
+    const double invLen=1.0/(double)juce::jmax(1,loudLen);
+    rmsDb.store ((float)(10.0*std::log10(juce::jmax(0.0,rmsSum )*invLen+1.0e-12)));
+    lufsDb.store((float)(-0.691+10.0*std::log10(juce::jmax(0.0,lufsSum)*invLen+1.0e-12)));
 }
 
 //==============================================================================
@@ -785,6 +831,8 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
         {
             updateEqCoefficients();
             juce::dsp::ProcessContextReplacing<float> ctx(block);
+            if(apvts.getRawParameterValue(IDs::lcOn)->load()>0.5f)
+                { lowCutA.process(ctx); lowCutB.process(ctx); }
             lfBoostShelf.process(ctx);lfAttenShelf.process(ctx);
             hfBoostPeak.process(ctx);hfAttenShelf.process(ctx);
             notch1.process(ctx);notch2.process(ctx);
@@ -830,6 +878,9 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
     }
     outLevelDb.store(juce::Decibels::gainToDecibels(peakOut,-90.f));
 
+    // Feed the analyser from the processed output (shows EQ + saturation)
+    pushScope(buffer.getReadPointer(0), numCh>1?buffer.getReadPointer(1):nullptr, n);
+
     const bool tOn=apvts.getRawParameterValue(IDs::tapeOn)->load()>0.5f;
     const bool vOn=apvts.getRawParameterValue(IDs::valveOn)->load()>0.5f;
     const float t01=tOn?apvts.getRawParameterValue(IDs::tapeDrive)->load()/10.f:0.f;
@@ -840,6 +891,25 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
     heat.store(juce::jlimit(0.f,1.f,0.55f*d01+0.5f*juce::jlimit(0.f,1.f,grAll/10.f)));
 
     for(int ch=numCh;ch<buffer.getNumChannels();++ch) buffer.clear(ch,0,n);
+}
+
+//==============================================================================
+void HertzMagicAudioProcessor::pushScope(const float* L,const float* R,int n)
+{
+    int w=scopeWrite.load(std::memory_order_relaxed);
+    for(int i=0;i<n;++i){
+        const float m=R?0.5f*(L[i]+R[i]):L[i];
+        scopeBuf[(size_t)w].store(m,std::memory_order_relaxed);
+        w=(w+1)&(kScopeSize-1);
+    }
+    scopeWrite.store(w,std::memory_order_relaxed);
+}
+
+void HertzMagicAudioProcessor::copyScope(float* dst,int num) const
+{
+    const int w=scopeWrite.load(std::memory_order_relaxed);
+    for(int i=0;i<num;++i)
+        dst[i]=scopeBuf[(size_t)((w-num+i)&(kScopeSize-1))].load(std::memory_order_relaxed);
 }
 
 //==============================================================================

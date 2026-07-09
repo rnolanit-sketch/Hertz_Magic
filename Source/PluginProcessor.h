@@ -58,8 +58,21 @@ public:
     static constexpr int kSSBands = 6;
     std::atomic<float> ssGrDb[kSSBands] { {0.f},{0.f},{0.f},{0.f},{0.f},{0.f} };
 
+    // Saturation "extremity" meters (0..1 harmonic-activity per stage)
+    std::atomic<float> tapeSat  { 0.0f };
+    std::atomic<float> valveSat { 0.0f };
+
+    // ---- Spectrum analyser scope (audio thread writes, editor reads) ------
+    static constexpr int kScopeSize = 2048;   // power of two
+    void copyScope (float* dst, int num) const;   // newest `num` samples, time order
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+
+    // Lock-free mono ring for the analyser
+    std::array<std::atomic<float>, kScopeSize> scopeBuf;
+    std::atomic<int> scopeWrite { 0 };
+    void pushScope (const float* L, const float* R, int n);
 
     // ---- EQ ----
     void updateEqCoefficients();
@@ -68,9 +81,11 @@ private:
     using StereoIIR = juce::dsp::ProcessorDuplicator<Filter, Coeffs>;
     StereoIIR lfBoostShelf, lfAttenShelf, hfBoostPeak, hfAttenShelf;
     StereoIIR notch1, notch2;
+    StereoIIR lowCutA, lowCutB;      // LR4 (24 dB/oct) high-pass — "low cut"
     float cLfBoost{-1},cLfAtten{-1},cHfBoost{-1},cHfBw{-1},cHfAtten{-1};
     int   cLfFreq{-1},cHfFreq{-1},cHfAttenSel{-1};
     float cN1F{-1},cN1D{-1},cN1Q{-1},cN2F{-1},cN2D{-1},cN2Q{-1};
+    float cLcFreq{-1};
 
     // ---- Multiband comp ----
     struct BandComp
@@ -105,7 +120,11 @@ private:
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> laDelay { 8192 };
     float limEnv = 1.0f, limAvgGr = 0.0f;
     juce::dsp::IIR::Filter<float> kShelf[2], kHip[2];   // K-weighting (BS.1770)
-    float rmsState = 0.0f, lufsState = 0.0f, inRmsState = 0.0f;
+    float inRmsState = 0.0f;
+    // 3-second sliding windows for RMS + short-term LUFS (EBU R128 short-term)
+    std::vector<float> rmsWin, lufsWin;
+    int   loudLen = 0, loudPos = 0;
+    double rmsSum = 0.0, lufsSum = 0.0;
     int lookaheadSamples = 0;
     float pokeFast = 0.0f, pokeSlow = 0.0f;             // transient detector envs
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> deltaDelay { 16384 };

@@ -54,9 +54,16 @@ Three modules, **drag any module header to reorder the chain** (default: EQ → 
 ### HERTZTEQ EQ
 Passive-style curve with the classic trick: boost and attenuate the same low
 frequency simultaneously to carve a low-mid dip while the sub stays full.
-Drag the nodes on the curve display, or use the knobs.
+Drag the nodes on the curve display, or use the knobs. Knobs are grouped
+**LOW · NOTCH · HIGH** left-to-right, under their part of the frequency axis.
 Low: boost/atten, 20/30/60/100 Hz. High: bell boost with bandwidth,
 3–16 kHz, plus shelf atten at 5/10/20 kHz.
+
+- **LOW CUT** — a steep 24 dB/oct high-pass for pulling out rumble and sub,
+  sweepable **10–50 Hz**. Toggle with **LC** in the header.
+- **Spectrum analyser** — a live FFT of the processed output sits behind the
+  curve so you can see how the EQ (and the saturation harmonics) shape the
+  mix. Toggle with **SPEC** in the header.
 
 ### MULTIBAND COMP
 Three bands (Low / Mid / High, Drawmer-style) split by 4th-order
@@ -74,9 +81,13 @@ Two independent stages in series, both inside one 4x-oversampled block
   tonal family — Luminous (open), Gold (classic), Dark (thick).
 - **VALVE** (ECC83-style): asymmetric tube shaping, 2nd-harmonic biased.
 
-Each has its own drive and IN switch. Both are unity-gain at low level —
-they only touch the peaks, so density you hear is saturation, not loudness.
-The whole UI shifts green → orange as drive and gain reduction build.
+Each has its own drive and IN switch, and each shows an **extremity meter** —
+how hard that stage is bending the signal (the added harmonic content), so you
+can see when you're pushing into obvious distortion. In **M/S** mode the
+CHARACTER control stays available alongside the per-Mid/Side drives. Both
+stages are unity-gain at low level — they only touch the peaks, so density you
+hear is saturation, not loudness. The whole UI shifts green → orange as drive
+and gain reduction build.
 
 ### SPECTRAL TAME (post-saturation)
 Soothe-style dynamic top-end smoothing — six bands from 1.8 to 15 kHz.
@@ -96,7 +107,16 @@ puts every stage after it in its designed operating range.
 
 ### MASTER
 Mix / Output faders (Input lives in the left rail). The dry path for Mix is
-latency-compensated, so parallel settings stay phase-coherent.
+latency-compensated, so parallel settings stay phase-coherent. The
+**LOUDNESS** cluster reads **RMS** and **short-term LUFS**, both as a true
+**3-second sliding average** (the EBU R128 short-term window) so the numbers
+sit still enough to read instead of flickering.
+
+### SKINS
+Cycle the button top-right through three looks: **DIGITAL** (phosphor green),
+**VINTAGE** (brushed-aluminium hardware), and **SPACE** (deep-void navy with a
+starfield and an ion-cyan → nebula-magenta heat shift). Purely cosmetic — the
+processing is identical in every skin.
 
 ---
 

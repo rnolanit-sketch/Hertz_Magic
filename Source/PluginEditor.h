@@ -39,7 +39,28 @@ namespace VintageColours
     const juce::Colour bandHigh { 0xffe07030 };   // burnt orange
 }
 
-enum class Skin { Digital = 0, Vintage = 1 };
+// SKIN C — Space (deep-void navy, ion cyan → nebula magenta heat, starfield)
+namespace SpaceColours
+{
+    const juce::Colour background   { 0xff05060e };   // deep space
+    const juce::Colour panel        { 0xff0d1022 };   // instrument navy
+    const juce::Colour panelLight   { 0xff161b38 };
+    const juce::Colour display      { 0xff070812 };   // near-black screen
+    const juce::Colour panelStroke  { 0xff232a4d };
+    const juce::Colour gridLine     { 0xff151b34 };
+    const juce::Colour accentCold   { 0xff4fd6ff };   // ion cyan (idle)
+    const juce::Colour accentHot    { 0xffff6ec7 };   // nebula magenta (pushed)
+    const juce::Colour textDim      { 0xff9aa6d6 };
+    const juce::Colour textBright   { 0xffe9edff };
+    const juce::Colour nebula1      { 0xff2a2f6b };
+    const juce::Colour nebula2      { 0xff5a2a6b };
+    const juce::Colour bandLow  { 0xff4fd6ff };
+    const juce::Colour bandMid  { 0xffb98cff };
+    const juce::Colour bandHigh { 0xffff9ec4 };
+}
+
+enum class Skin { Digital = 0, Vintage = 1, Space = 2 };
+static constexpr int kNumSkins = 3;
 
 //==============================================================================
 class HertzLookAndFeel : public juce::LookAndFeel_V4
@@ -72,7 +93,12 @@ class EqCurveDisplay : public juce::Component
 {
 public:
     explicit EqCurveDisplay(juce::AudioProcessorValueTreeState& s):apvts(s){}
-    void setAccent(juce::Colour c){accent=c;repaint();}
+    void setAccent(juce::Colour c){accent=c;}
+    void setColours(juce::Colour disp,juce::Colour grid,juce::Colour strk,juce::Colour txt)
+    { dispCol=disp; gridCol=grid; strokeC=strk; textC=txt; }
+    void setShowAnalyzer(bool s){ showAnalyzer=s; }
+    /** Log-spaced magnitude bins in dBFS, from the editor's FFT. */
+    void setSpectrum(const std::vector<float>& magsDb){ spec=magsDb; repaint(); }
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
@@ -83,6 +109,10 @@ private:
     float dbToY(float db) const;
     juce::AudioProcessorValueTreeState& apvts;
     juce::Colour accent{HertzColours::accentGreen};
+    juce::Colour dispCol{HertzColours::display}, gridCol{HertzColours::gridLine},
+                 strokeC{HertzColours::panelStroke}, textC{HertzColours::textDim};
+    std::vector<float> spec;
+    bool showAnalyzer=true;
     juce::Point<float> lfNode,hfNode,n1Node,n2Node;
     int dragging=0;   // 1=lf 2=hf 3=notch1 4=notch2
 };
@@ -199,6 +229,23 @@ private:
 };
 
 //==============================================================================
+/** Horizontal "extremity" meter for a saturation stage — how hard it is
+    working (0..1 harmonic activity). Fills green→accent and reads a label. */
+class DriveMeter : public juce::Component
+{
+public:
+    explicit DriveMeter(juce::String cap):caption(std::move(cap)){}
+    void setValue(float v01,juce::Colour a,juce::Colour disp,juce::Colour txt)
+    { displayed=juce::jmax(v01,displayed*0.86f); accent=a; dispCol=disp; textC=txt; repaint(); }
+    void paint(juce::Graphics&) override;
+private:
+    juce::String caption;
+    float displayed=0.f;
+    juce::Colour accent{HertzColours::accentGreen},
+                 dispCol{HertzColours::display}, textC{HertzColours::textDim};
+};
+
+//==============================================================================
 class ModulePanel : public juce::Component
 {
 public:
@@ -208,14 +255,16 @@ public:
     void paint(juce::Graphics& g) override
     {
         auto r=getLocalBounds().toFloat();
-        g.setColour(HertzColours::panel);
+        g.setColour(panelFill);
         g.fillRoundedRectangle(r,6.f);
-        g.setColour(dragging?accentColour.withAlpha(0.8f):HertzColours::panelStroke);
+        g.setColour(dragging?accentColour.withAlpha(0.8f):panelStrokeC);
         g.drawRoundedRectangle(r,6.f,dragging?2.f:1.f);
         // accent underline beneath the header strip — a little more life
         g.setColour(accentColour.withAlpha(0.35f));
         g.fillRect(r.getX()+10.f,27.f,r.getWidth()-20.f,1.5f);
     }
+    void setPanelColours(juce::Colour fill,juce::Colour strk)
+    { panelFill=fill; panelStrokeC=strk; repaint(); }
     void mouseDown(const juce::MouseEvent& e) override
     {
         if(e.y>26) return;
@@ -240,6 +289,7 @@ private:
     bool dragging=false;
     juce::Point<int> dragStart;
     juce::Colour accentColour{HertzColours::accentGreen};
+    juce::Colour panelFill{HertzColours::panel}, panelStrokeC{HertzColours::panelStroke};
 };
 
 //==============================================================================
@@ -279,8 +329,18 @@ private:
     // EQ
     EqCurveDisplay eqCurve;
     Knob lfBoost,lfAtten,lfFreq,hfBoost,hfBw,hfFreq,hfAtten,hfAttenSel;
-    Knob n1Freq,n1Q,n2Freq,n2Q;
-    juce::ToggleButton eqOnBtn; std::unique_ptr<ButtonAt> eqOnAt;
+    Knob n1Freq,n1Q,n2Freq,n2Q,lcFreq;
+    juce::ToggleButton eqOnBtn,lcOnBtn,anlBtn;
+    std::unique_ptr<ButtonAt> eqOnAt,lcOnAt;
+    bool showAnalyzer=true;
+
+    // Analyser FFT (message-thread; reads the processor scope ring)
+    static constexpr int kFftOrder=11, kFftSize=1<<kFftOrder;   // 2048
+    juce::dsp::FFT fft{kFftOrder};
+    juce::dsp::WindowingFunction<float> fftWindow{(size_t)kFftSize,
+        juce::dsp::WindowingFunction<float>::hann};
+    std::vector<float> fftData, scopeMag;
+    void updateAnalyzer();
 
     // Comp
     MultibandGRDisplay mbGR;
@@ -303,6 +363,7 @@ private:
     Knob tapeDriveMid,tapeDriveSide,valveDriveMid,valveDriveSide,sideLPFreq;
     juce::ToggleButton tapeOnBtn,valveOnBtn,satMsBtn;
     std::unique_ptr<ButtonAt> tapeOnAt,valveOnAt,satMsAt;
+    DriveMeter tapeMeter{"TAPE"},valveMeter{"VALVE"};
 
     // Spectral tame (fixed, post-saturation)
     SpectralTameDisplay ssDisplay;
@@ -315,7 +376,7 @@ private:
     Knob inTrim,outTrim,mix;
 
     juce::Rectangle<int> headerArea,eqRow,moduleRow,masterPanel,meterLeft,meterRight,
-                         finalPanel,spectralPanel;
+                         finalPanel,spectralPanel,loudBox;
 
     static constexpr int kModuleW=330, kModuleH=380, kEqH=280, kGap=10,
                          kFinalW=190, kSpectralW=210, kInRailW=74;
@@ -323,6 +384,7 @@ private:
     void applySkinToAll();
     void paintDigitalBackground(juce::Graphics&);
     void paintVintageBackground(juce::Graphics&);
+    void paintSpaceBackground(juce::Graphics&);
     void paintCommonOverlays(juce::Graphics&);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(HertzMagicAudioProcessorEditor)

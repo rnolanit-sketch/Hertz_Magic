@@ -6,18 +6,32 @@ using namespace HertzColours;
 //==============================================================================
 juce::Colour HertzLookAndFeel::accent() const
 {
+    const float h=juce::jlimit(0.f,1.f,heat);
     if(skin==Skin::Vintage)
-        return VintageColours::accentCold.interpolatedWith(
-            VintageColours::accentHot, juce::jlimit(0.f,1.f,heat));
-    return HertzColours::accentGreen.interpolatedWith(
-        HertzColours::accentOrange, juce::jlimit(0.f,1.f,heat));
+        return VintageColours::accentCold.interpolatedWith(VintageColours::accentHot,h);
+    if(skin==Skin::Space)
+        return SpaceColours::accentCold.interpolatedWith(SpaceColours::accentHot,h);
+    return HertzColours::accentGreen.interpolatedWith(HertzColours::accentOrange,h);
 }
-juce::Colour HertzLookAndFeel::bg()     const { return skin==Skin::Vintage?VintageColours::background:HertzColours::background; }
-juce::Colour HertzLookAndFeel::panelCol() const { return skin==Skin::Vintage?VintageColours::panel:HertzColours::panel; }
-juce::Colour HertzLookAndFeel::strokeCol() const { return skin==Skin::Vintage?VintageColours::panelStroke:HertzColours::panelStroke; }
-juce::Colour HertzLookAndFeel::textBrightCol() const { return skin==Skin::Vintage?VintageColours::textSilk:HertzColours::textBright; }
-juce::Colour HertzLookAndFeel::textDimCol() const { return skin==Skin::Vintage?VintageColours::textDim:HertzColours::textDim; }
-juce::Colour HertzLookAndFeel::displayCol() const { return skin==Skin::Vintage?VintageColours::display:HertzColours::display; }
+juce::Colour HertzLookAndFeel::bg() const {
+    return skin==Skin::Vintage?VintageColours::background
+         : skin==Skin::Space  ?SpaceColours::background
+                              :HertzColours::background; }
+juce::Colour HertzLookAndFeel::panelCol() const {
+    return skin==Skin::Vintage?VintageColours::panel
+         : skin==Skin::Space  ?SpaceColours::panel:HertzColours::panel; }
+juce::Colour HertzLookAndFeel::strokeCol() const {
+    return skin==Skin::Vintage?VintageColours::panelStroke
+         : skin==Skin::Space  ?SpaceColours::panelStroke:HertzColours::panelStroke; }
+juce::Colour HertzLookAndFeel::textBrightCol() const {
+    return skin==Skin::Vintage?VintageColours::textSilk
+         : skin==Skin::Space  ?SpaceColours::textBright:HertzColours::textBright; }
+juce::Colour HertzLookAndFeel::textDimCol() const {
+    return skin==Skin::Vintage?VintageColours::textDim
+         : skin==Skin::Space  ?SpaceColours::textDim:HertzColours::textDim; }
+juce::Colour HertzLookAndFeel::displayCol() const {
+    return skin==Skin::Vintage?VintageColours::display
+         : skin==Skin::Space  ?SpaceColours::display:HertzColours::display; }
 
 HertzLookAndFeel::HertzLookAndFeel()
 {
@@ -26,10 +40,13 @@ HertzLookAndFeel::HertzLookAndFeel()
 
 void HertzLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& l)
 {
-    // Slider value readouts get the bright text + a readable minimum size;
-    // section labels use the (brightened) dim text.
+    // Slider value readouts get bright text; labels with an explicitly-set
+    // colour (band GR, loudness) keep it; everything else uses skin dim text.
     const bool isValueBox=dynamic_cast<juce::Slider*>(l.getParentComponent())!=nullptr;
-    g.setColour(isValueBox?textBrightCol():textDimCol());
+    juce::Colour c = isValueBox ? textBrightCol()
+        : l.isColourSpecified(juce::Label::textColourId) ? l.findColour(juce::Label::textColourId)
+        : textDimCol();
+    g.setColour(c);
     auto f=l.getFont();
     if(f.getHeight()<12.f) f.setHeight(isValueBox?13.f:12.f);
     g.setFont(f);
@@ -45,19 +62,19 @@ void HertzLookAndFeel::drawDigitalKnob(juce::Graphics& g,
     auto cen=b.getCentre();
     const auto acc=accent();
 
-    g.setColour(HertzColours::panel.brighter(0.06f)); g.fillEllipse(b.reduced(r*0.22f));
-    g.setColour(HertzColours::panelStroke); g.drawEllipse(b.reduced(r*0.22f),1.f);
+    g.setColour(panelCol().brighter(0.06f)); g.fillEllipse(b.reduced(r*0.22f));
+    g.setColour(strokeCol()); g.drawEllipse(b.reduced(r*0.22f),1.f);
 
     juce::Path track,val;
     track.addCentredArc(cen.x,cen.y,arcR,arcR,0.f,a0,a1,true);
     val.addCentredArc(cen.x,cen.y,arcR,arcR,0.f,a0,juce::jmax(a,a0+0.01f),true);
-    g.setColour(HertzColours::panelStroke.brighter(0.05f));
+    g.setColour(strokeCol().brighter(0.05f));
     g.strokePath(track,juce::PathStrokeType(3.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
     g.setColour(acc.withAlpha(0.25f));
     g.strokePath(val,juce::PathStrokeType(5.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
     g.setColour(acc);
     g.strokePath(val,juce::PathStrokeType(2.4f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-    g.setColour(HertzColours::textBright);
+    g.setColour(textBrightCol());
     g.drawLine({cen.translated(r*0.3f*std::sin(a),-r*0.3f*std::cos(a)),
                 cen.translated(r*0.72f*std::sin(a),-r*0.72f*std::cos(a))},2.2f);
 }
@@ -173,10 +190,10 @@ void HertzLookAndFeel::drawToggleButton(juce::Graphics& g,juce::ToggleButton& b,
         return;
     }
     if(b.getButtonText()=="HP"){
-        g.setColour(on?acc.withAlpha(0.16f):panel); g.fillRoundedRectangle(r,3.f);
-        g.setColour(on?acc:(hi?textDim.brighter():panelStroke)); g.drawRoundedRectangle(r,3.f,1.f);
+        g.setColour(on?acc.withAlpha(0.16f):panelCol()); g.fillRoundedRectangle(r,3.f);
+        g.setColour(on?acc:(hi?textDimCol().brighter():strokeCol())); g.drawRoundedRectangle(r,3.f,1.f);
         auto c=r.getCentre(); const float rd=juce::jmin(r.getWidth(),r.getHeight())*0.28f;
-        g.setColour(on?acc:textDim);
+        g.setColour(on?acc:textDimCol());
         juce::Path p;
         p.addCentredArc(c.x,c.y+rd*0.35f,rd,rd,0.f,-juce::MathConstants<float>::halfPi,juce::MathConstants<float>::halfPi,true);
         g.strokePath(p,juce::PathStrokeType(1.6f));
@@ -184,9 +201,9 @@ void HertzLookAndFeel::drawToggleButton(juce::Graphics& g,juce::ToggleButton& b,
         g.fillRoundedRectangle(c.x+rd-2.0f,c.y+rd*0.1f,3.5f,rd*0.9f,1.5f);
         return;
     }
-    g.setColour(on?acc.withAlpha(0.16f):panel); g.fillRoundedRectangle(r,3.f);
-    g.setColour(on?acc:(hi?textDim.brighter():panelStroke)); g.drawRoundedRectangle(r,3.f,1.f);
-    g.setColour(on?acc:textDim);
+    g.setColour(on?acc.withAlpha(0.16f):panelCol()); g.fillRoundedRectangle(r,3.f);
+    g.setColour(on?acc:(hi?textDimCol().brighter():strokeCol())); g.drawRoundedRectangle(r,3.f,1.f);
+    g.setColour(on?acc:textDimCol());
     g.setFont(juce::Font(juce::FontOptions(12.f,juce::Font::bold)));
     g.drawText(b.getButtonText(),r,juce::Justification::centred);
 }
@@ -203,19 +220,38 @@ float EqCurveDisplay::dbToY(float db) const {return getHeight()*0.5f-juce::jlimi
 void EqCurveDisplay::paint(juce::Graphics& g)
 {
     double sr=48000.0; auto r=getLocalBounds().toFloat();
-    g.setColour(display); g.fillRoundedRectangle(r,4.f);
-    g.setColour(gridLine);
+    const int W=getWidth(), H=getHeight();
+    g.setColour(dispCol); g.fillRoundedRectangle(r,4.f);
+
+    // ---- Analyser spectrum (drawn behind grid + EQ curve) ----
+    if(showAnalyzer && spec.size()>1)
+    {
+        const int N=(int)spec.size();
+        auto specY=[&](float db){ return juce::jmap(juce::jlimit(-90.f,0.f,db),
+            -90.f,0.f,(float)H-1.f,4.f); };
+        juce::Path fill; fill.startNewSubPath(0.f,(float)H);
+        for(int i=0;i<N;++i) fill.lineTo((float)W*(float)i/(float)(N-1),specY(spec[(size_t)i]));
+        fill.lineTo((float)W,(float)H); fill.closeSubPath();
+        g.setColour(accent.withAlpha(0.10f)); g.fillPath(fill);
+        juce::Path top;
+        for(int i=0;i<N;++i){ float x=(float)W*(float)i/(float)(N-1), y=specY(spec[(size_t)i]);
+            i==0?top.startNewSubPath(x,y):top.lineTo(x,y);}
+        g.setColour(accent.withAlpha(0.30f));
+        g.strokePath(top,juce::PathStrokeType(1.0f));
+    }
+
+    g.setColour(gridCol);
     for(double f:{50.0,100.0,200.0,500.0,1000.0,2000.0,5000.0,10000.0})
         g.drawVerticalLine((int)freqToX(f),0.f,r.getBottom());
     for(float db:{-12.f,-6.f,6.f,12.f}) g.drawHorizontalLine((int)dbToY(db),0.f,r.getRight());
-    g.setColour(panelStroke); g.drawHorizontalLine((int)dbToY(0.f),0.f,r.getRight());
-    g.setColour(textDim.withAlpha(0.8f)); g.setFont(juce::Font(juce::FontOptions(11.f)));
+    g.setColour(strokeC); g.drawHorizontalLine((int)dbToY(0.f),0.f,r.getRight());
+    g.setColour(textC.withAlpha(0.8f)); g.setFont(juce::Font(juce::FontOptions(11.f)));
     static const std::pair<double,const char*> fLbl[]={
         {50.0,"50"},{100.0,"100"},{200.0,"200"},{500.0,"500"},
         {1000.0,"1k"},{2000.0,"2k"},{5000.0,"5k"},{10000.0,"10k"}};
     for(auto& fl:fLbl)
         g.drawText(fl.second,(int)freqToX(fl.first)+3,getHeight()-14,34,11,juce::Justification::left);
-    g.setColour(textDim.withAlpha(0.65f)); g.setFont(juce::Font(juce::FontOptions(10.f)));
+    g.setColour(textC.withAlpha(0.65f)); g.setFont(juce::Font(juce::FontOptions(10.f)));
     for(float db:{-12.f,-6.f,6.f,12.f})
         g.drawText(juce::String((int)db),4,(int)dbToY(db)-11,26,10,juce::Justification::left);
 
@@ -227,6 +263,8 @@ void EqCurveDisplay::paint(juce::Graphics& g)
     int   hfF=(int)apvts.getRawParameterValue("hf_freq")->load();
     float hfA=apvts.getRawParameterValue("hf_atten")->load();
     int   hfS=(int)apvts.getRawParameterValue("hf_atten_sel")->load();
+    float lcF=apvts.getRawParameterValue("lc_freq")->load();
+    bool  lcOn=apvts.getRawParameterValue("lc_on")->load()>0.5f;
 
     float lowF=kLF[juce::jlimit(0,3,lfF)];
     float hbF=kHB[juce::jlimit(0,6,hfF)];
@@ -246,12 +284,14 @@ void EqCurveDisplay::paint(juce::Graphics& g)
         juce::Decibels::decibelsToGain(-hfA*1.6f));
     auto c5=C::makePeakFilter(sr,n1F,juce::jmax(1.f,n1Qv),juce::Decibels::decibelsToGain(n1D));
     auto c6=C::makePeakFilter(sr,n2F,juce::jmax(1.f,n2Qv),juce::Decibels::decibelsToGain(n2D));
+    auto clo=C::makeHighPass(sr,juce::jlimit(10.f,50.f,lcF),0.7071f);   // LR4 = squared
 
     auto magDb=[&](double f){
-        return (float)juce::Decibels::gainToDecibels(
-            c1->getMagnitudeForFrequency(f,sr)*c2->getMagnitudeForFrequency(f,sr)*
-            c3->getMagnitudeForFrequency(f,sr)*c4->getMagnitudeForFrequency(f,sr)*
-            c5->getMagnitudeForFrequency(f,sr)*c6->getMagnitudeForFrequency(f,sr),-60.0);};
+        double m=c1->getMagnitudeForFrequency(f,sr)*c2->getMagnitudeForFrequency(f,sr)*
+                 c3->getMagnitudeForFrequency(f,sr)*c4->getMagnitudeForFrequency(f,sr)*
+                 c5->getMagnitudeForFrequency(f,sr)*c6->getMagnitudeForFrequency(f,sr);
+        if(lcOn){ double h=clo->getMagnitudeForFrequency(f,sr); m*=h*h; }
+        return (float)juce::Decibels::gainToDecibels(m,-60.0);};
 
     juce::Path curve;
     for(int px=0;px<=getWidth();px+=2){
@@ -268,13 +308,13 @@ void EqCurveDisplay::paint(juce::Graphics& g)
     n1Node={freqToX(n1F),dbToY(magDb(n1F))};
     n2Node={freqToX(n2F),dbToY(magDb(n2F))};
     for(auto p:{lfNode,hfNode}){
-        g.setColour(display); g.fillEllipse(p.x-6.f,p.y-6.f,12.f,12.f);
+        g.setColour(dispCol); g.fillEllipse(p.x-6.f,p.y-6.f,12.f,12.f);
         g.setColour(accent);  g.drawEllipse(p.x-6.f,p.y-6.f,12.f,12.f,2.f);}
     for(auto p:{n1Node,n2Node}){   // notches = squares
-        g.setColour(display); g.fillRect(p.x-5.f,p.y-5.f,10.f,10.f);
+        g.setColour(dispCol); g.fillRect(p.x-5.f,p.y-5.f,10.f,10.f);
         g.setColour(accent.withRotatedHue(0.06f));
         g.drawRect(juce::Rectangle<float>(p.x-5.f,p.y-5.f,10.f,10.f),2.f);}
-    g.setColour(panelStroke); g.drawRoundedRectangle(r,4.f,1.f);
+    g.setColour(strokeC); g.drawRoundedRectangle(r,4.f,1.f);
 }
 
 void EqCurveDisplay::mouseDown(const juce::MouseEvent& e)
@@ -609,6 +649,23 @@ void SpectralTameDisplay::paint(juce::Graphics& g)
 }
 
 //==============================================================================
+void DriveMeter::paint(juce::Graphics& g)
+{
+    auto r=getLocalBounds().toFloat();
+    g.setColour(dispCol); g.fillRoundedRectangle(r,3.f);
+    g.setColour(accent.withAlpha(0.25f)); g.drawRoundedRectangle(r,3.f,1.f);
+    auto bar=r.reduced(2.5f);
+    const float w=juce::jmax(2.f,bar.getWidth()*juce::jlimit(0.f,1.f,displayed));
+    g.setColour(accent.withAlpha(0.85f));
+    g.fillRoundedRectangle(bar.withWidth(w),2.f);
+    g.setColour(textC);
+    g.setFont(juce::Font(juce::FontOptions(9.5f,juce::Font::bold)));
+    g.drawText(caption,r.reduced(6.f,0.f),juce::Justification::centredLeft);
+    g.drawText(juce::String(juce::roundToInt(displayed*100.f))+"%",
+        r.reduced(6.f,0.f),juce::Justification::centredRight);
+}
+
+//==============================================================================
 void LevelMeter::paint(juce::Graphics& g)
 {
     auto r=getLocalBounds().toFloat();
@@ -629,11 +686,14 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
 {
     setLookAndFeel(&lnf);
 
-    // EQ
-    skinToggleBtn.setButtonText("VINTAGE");
-    skinToggleBtn.onClick=[this]{
-        currentSkin=(currentSkin==Skin::Digital?Skin::Vintage:Skin::Digital);
-        skinToggleBtn.setButtonText(currentSkin==Skin::Digital?"VINTAGE":"DIGITAL");
+    // Skin cycle: DIGITAL → VINTAGE → SPACE → …  (button shows the next skin)
+    auto skinName=[](Skin s){ return s==Skin::Digital?"DIGITAL"
+                                   : s==Skin::Vintage?"VINTAGE":"SPACE"; };
+    auto nextSkin=[](Skin s){ return (Skin)(((int)s+1)%kNumSkins); };
+    skinToggleBtn.setButtonText(skinName(nextSkin(currentSkin)));
+    skinToggleBtn.onClick=[this,skinName,nextSkin]{
+        currentSkin=nextSkin(currentSkin);
+        skinToggleBtn.setButtonText(skinName(nextSkin(currentSkin)));
         applySkinToAll();
         repaint();
     };
@@ -652,7 +712,15 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     setupKnob(n1Q,"n1_q","NOTCH 1 Q",&eqModule);
     setupKnob(n2Freq,"n2_freq","NOTCH 2 HZ",&eqModule);
     setupKnob(n2Q,"n2_q","NOTCH 2 Q",&eqModule);
+    setupKnob(lcFreq,"lc_freq","LOW CUT",&eqModule);
     setupToggle(eqOnBtn,eqOnAt,"eq_on","IN",&eqModule);
+    setupToggle(lcOnBtn,lcOnAt,"lc_on","LC",&eqModule);
+    anlBtn.setButtonText("SPEC");
+    anlBtn.setClickingTogglesState(true);
+    anlBtn.setToggleState(true,juce::dontSendNotification);
+    anlBtn.onClick=[this]{ showAnalyzer=anlBtn.getToggleState();
+        eqCurve.setShowAnalyzer(showAnalyzer); };
+    eqModule.addAndMakeVisible(anlBtn);
 
     // Comp
     compModule.moduleIndex=1; addAndMakeVisible(compModule); compModule.addAndMakeVisible(mbGR);
@@ -683,6 +751,13 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     setupToggle(valveOnBtn,valveOnAt,"valve_on","IN",&satModule);
     setupToggle(satMsBtn,satMsAt,"sat_ms","M/S",&satModule);
     satMsBtn.onClick=[this]{ layoutModules(); repaint(); };
+    satModule.addAndMakeVisible(tapeMeter);
+    satModule.addAndMakeVisible(valveMeter);
+
+    // Analyser scratch buffers
+    fftData.resize((size_t)kFftSize*2,0.f);
+    scopeMag.assign(256,-100.f);
+    eqCurve.setShowAnalyzer(true);
 
     // Spectral tame (fixed, post-saturation)
     addAndMakeVisible(ssDisplay);
@@ -710,8 +785,8 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
         juce::String(juce::CharPointer_UTF8("\xce\x94")),this);
     addAndMakeVisible(limMeter);
     for(auto* l:{&rmsLabel,&lufsLabel}){
-        l->setJustificationType(juce::Justification::centred);
-        l->setFont(juce::Font(juce::FontOptions(14.f,juce::Font::bold)));
+        l->setJustificationType(juce::Justification::centredRight);
+        l->setFont(juce::Font(juce::FontOptions(15.f,juce::Font::bold)));
         addAndMakeVisible(*l);}
 
     for(auto* m:modules)
@@ -814,17 +889,22 @@ void HertzMagicAudioProcessorEditor::layoutModules()
 
         if(mi==0) // EQ — landscape: wide curve, band groups under their ranges
         {
-            eqOnBtn.setBounds(m->getLocalBounds().reduced(10,4).removeFromTop(20).removeFromRight(40).withHeight(17));
+            auto hdr=m->getLocalBounds().reduced(10,4).removeFromTop(20);
+            eqOnBtn.setBounds(hdr.removeFromRight(40).withHeight(17));
+            hdr.removeFromRight(6);
+            lcOnBtn.setBounds(hdr.removeFromRight(40).withHeight(17));
+            hdr.removeFromRight(6);
+            anlBtn.setBounds(hdr.removeFromRight(52).withHeight(17));
             eqCurve.setBounds(inner.removeFromTop(inner.getHeight()-114));
             inner.removeFromTop(6);
             // group widths follow the log frequency axis: lows left, highs right
-            auto lowGrp  =inner.removeFromLeft(int(inner.getWidth()*0.25f));
-            auto notchGrp=inner.removeFromLeft(int(inner.getWidth()*0.45f));
+            auto lowGrp  =inner.removeFromLeft(int(inner.getWidth()*0.30f));
+            auto notchGrp=inner.removeFromLeft(int(inner.getWidth()*0.31f));
             auto highGrp =inner;
-            Knob* kl[]={&lfBoost,&lfAtten,&lfFreq};
+            Knob* kl[]={&lcFreq,&lfBoost,&lfAtten,&lfFreq};
             Knob* kn2[]={&n1Freq,&n1Q,&n2Freq,&n2Q};
             Knob* kh[]={&hfBoost,&hfBw,&hfFreq,&hfAtten,&hfAttenSel};
-            int cw=lowGrp.getWidth()/3;
+            int cw=lowGrp.getWidth()/4;
             for(auto* k:kl) layoutKnob(*k,lowGrp.removeFromLeft(cw).reduced(3,2));
             cw=notchGrp.getWidth()/4;
             for(auto* k:kn2) layoutKnob(*k,notchGrp.removeFromLeft(cw).reduced(3,2));
@@ -866,10 +946,14 @@ void HertzMagicAudioProcessorEditor::layoutModules()
             valveOnBtn.setBounds(valveHdr.removeFromLeft(36).withHeight(16));
             satMsBtn.setBounds(valveHdr.removeFromRight(44).withHeight(16));
 
-            // Graphics
-            tape.setBounds(tapeCol.removeFromTop(int(kModuleH*0.32f)));
+            // Graphics + per-stage extremity meter
+            tape.setBounds(tapeCol.removeFromTop(int(kModuleH*0.30f)));
+            tapeCol.removeFromTop(3);
+            tapeMeter.setBounds(tapeCol.removeFromTop(15).reduced(1,0));
             tapeCol.removeFromTop(4);
-            valve.setBounds(valveCol.removeFromTop(int(kModuleH*0.32f)));
+            valve.setBounds(valveCol.removeFromTop(int(kModuleH*0.30f)));
+            valveCol.removeFromTop(3);
+            valveMeter.setBounds(valveCol.removeFromTop(15).reduced(1,0));
             valveCol.removeFromTop(4);
 
             const bool msOn=processor.apvts.getRawParameterValue("sat_ms")->load()>0.5f;
@@ -911,11 +995,15 @@ void HertzMagicAudioProcessorEditor::timerCallback()
     auto acc=lnf.accent();
 
     eqCurve.setAccent(acc);
+    updateAnalyzer();
     float tapeSpeed=processor.apvts.getRawParameterValue("tape_on")->load()>0.5f
         ? processor.apvts.getRawParameterValue("tape_drive")->load()/10.f : 0.f;
     tape.update(smoothedHeat,tapeSpeed,acc);
     valve.setHeat(smoothedHeat,acc);
     for(auto* m:modules) m->setAccent(acc);
+
+    tapeMeter.setValue (processor.tapeSat.load(), acc,lnf.displayCol(),lnf.textDimCol());
+    valveMeter.setValue(processor.valveSat.load(),acc,lnf.displayCol(),lnf.textDimCol());
 
     const juce::Colour bcs[]={bandLow,bandMid,bandHigh};
     for(int b=0;b<3;++b){
@@ -934,19 +1022,53 @@ void HertzMagicAudioProcessorEditor::timerCallback()
 
     limMeter.setValue(processor.limGrDb.load(),acc);
     rmsLabel.setText(juce::String(processor.rmsDb.load(),1)+" dB",juce::dontSendNotification);
-    rmsLabel.setColour(juce::Label::textColourId,textBright);
+    rmsLabel.setColour(juce::Label::textColourId,lnf.textBrightCol());
     lufsLabel.setText(juce::String(processor.lufsDb.load(),1),juce::dontSendNotification);
     lufsLabel.setColour(juce::Label::textColourId,acc);
     repaint();
 }
 
 //==============================================================================
+void HertzMagicAudioProcessorEditor::updateAnalyzer()
+{
+    if(!showAnalyzer){ eqCurve.setSpectrum({}); return; }
+
+    std::fill(fftData.begin(),fftData.end(),0.f);
+    processor.copyScope(fftData.data(),kFftSize);
+    fftWindow.multiplyWithWindowingTable(fftData.data(),(size_t)kFftSize);
+    fft.performFrequencyOnlyForwardTransform(fftData.data());
+
+    const double sr=processor.getSampleRate()>0.0?processor.getSampleRate():48000.0;
+    const int nBins=kFftSize/2;
+    const int N=(int)scopeMag.size();
+    const double step=std::pow(1000.0,1.0/(double)(N-1));   // per-point freq ratio
+    const double norm=2.0/(double)kFftSize;
+
+    for(int i=0;i<N;++i)
+    {
+        const double f=20.0*std::pow(1000.0,(double)i/(double)(N-1));
+        const double fLo=f/std::sqrt(step), fHi=f*std::sqrt(step);
+        int b0=juce::jlimit(0,nBins-1,(int)std::floor(fLo/(sr*0.5)*nBins));
+        int b1=juce::jlimit(b0,nBins-1,(int)std::ceil (fHi/(sr*0.5)*nBins));
+        float mag=0.f;
+        for(int b=b0;b<=b1;++b) mag=juce::jmax(mag,fftData[(size_t)b]);
+        const float db=juce::Decibels::gainToDecibels((float)(mag*norm),-100.f);
+        float& prev=scopeMag[(size_t)i];
+        prev = db>prev ? 0.5f*db+0.5f*prev : 0.15f*db+0.85f*prev;   // fast rise, slow fall
+    }
+    eqCurve.setSpectrum(scopeMag);
+}
+
+//==============================================================================
 void HertzMagicAudioProcessorEditor::applySkinToAll()
 {
     lnf.setSkin(currentSkin);
-    const bool v=(currentSkin==Skin::Vintage);
-    lnf.setColour(juce::Slider::textBoxTextColourId,
-        v?VintageColours::textSilk:HertzColours::textBright);
+    lnf.setColour(juce::Slider::textBoxTextColourId,lnf.textBrightCol());
+    eqCurve.setColours(lnf.displayCol(),
+        currentSkin==Skin::Vintage?VintageColours::gridLine
+      : currentSkin==Skin::Space  ?SpaceColours::gridLine:HertzColours::gridLine,
+        lnf.strokeCol(),lnf.textDimCol());
+    for(auto* m:modules) m->setPanelColours(lnf.panelCol(),lnf.strokeCol());
     for(auto* c:getChildren()) c->repaint();
 }
 
@@ -1022,14 +1144,53 @@ void HertzMagicAudioProcessorEditor::paintVintageBackground(juce::Graphics& g)
     paintCommonOverlays(g);
 }
 
+void HertzMagicAudioProcessorEditor::paintSpaceBackground(juce::Graphics& g)
+{
+    using namespace SpaceColours;
+    auto acc=lnf.accent();
+    g.fillAll(SpaceColours::background);
+
+    // Two soft nebula clouds (heat warms the second toward the accent)
+    auto glow=[&](juce::Point<float> c,float rad,juce::Colour col,float a){
+        juce::ColourGradient gr(col.withAlpha(a),c.x,c.y,col.withAlpha(0.f),c.x+rad,c.y,true);
+        g.setGradientFill(gr); g.fillRect(getLocalBounds()); };
+    glow({getWidth()*0.24f,getHeight()*0.30f},360.f,SpaceColours::nebula1,0.55f);
+    glow({getWidth()*0.78f,getHeight()*0.64f},420.f,
+         SpaceColours::nebula2.interpolatedWith(acc,smoothedHeat*0.6f),0.45f);
+
+    // Deterministic starfield with a gentle time twinkle
+    const double t=juce::Time::getMillisecondCounterHiRes()*0.001;
+    juce::Random rng(0x5EED17);
+    for(int i=0;i<150;++i)
+    {
+        const float x=rng.nextFloat()*getWidth();
+        const float y=rng.nextFloat()*getHeight();
+        const float base=0.25f+0.55f*rng.nextFloat();
+        const float tw=0.6f+0.4f*(float)std::sin(t*(0.5+rng.nextFloat()*2.5)+i);
+        const float sz=rng.nextFloat()<0.12f?1.8f:1.0f;
+        g.setColour(juce::Colours::white.withAlpha(juce::jlimit(0.f,1.f,base*tw)));
+        g.fillEllipse(x,y,sz,sz);
+    }
+
+    // Header wordmark
+    g.setColour(SpaceColours::textBright);
+    g.setFont(juce::Font(juce::FontOptions(24.f,juce::Font::bold)));
+    g.drawText("HERTZ",headerArea.withTrimmedLeft(20),juce::Justification::centredLeft);
+    int mx=headerArea.getX()+20+juce::GlyphArrangement::getStringWidthInt(
+        juce::Font(juce::FontOptions(24.f,juce::Font::bold)),"HERTZ ");
+    g.setColour(acc); g.drawText("MAGIC",headerArea.withLeft(mx),juce::Justification::centredLeft);
+
+    paintCommonOverlays(g);
+}
+
 void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
 {
     auto acc=lnf.accent();
     const bool vtg=(currentSkin==Skin::Vintage);
-    const auto txtBright=vtg?VintageColours::textSilk:textBright;
-    const auto txtDim2=vtg?VintageColours::textDim:textDim;
-    const auto panelFill=vtg?VintageColours::panel:panel;
-    const auto panelStrk=vtg?VintageColours::panelStroke:panelStroke;
+    const auto txtBright=lnf.textBrightCol();
+    const auto txtDim2=lnf.textDimCol();
+    const auto panelFill=lnf.panelCol();
+    const auto panelStrk=lnf.strokeCol();
 
     // header chain readout — live processing order
     {
@@ -1064,15 +1225,16 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
             juce::Justification::centredLeft);
         g.setColour(txtDim2.withAlpha(0.6f));
         g.setFont(juce::Font(juce::FontOptions(10.5f)));
-        g.drawText(juce::String(juce::CharPointer_UTF8("\xe2\x8c\x96 DRAG")),
-            m->getBounds().reduced(10,0).removeFromTop(26).withTrimmedRight(mi==0?50:0),
-            juce::Justification::centredRight);
+        if(mi!=0)   // EQ header is full of toggles (IN/LC/SPEC) — no room for a hint
+            g.drawText(juce::String(juce::CharPointer_UTF8("\xe2\x8c\x96 DRAG")),
+                m->getBounds().reduced(10,0).removeFromTop(26),
+                juce::Justification::centredRight);
         if(mi==0){
             // faint separators between LOW | NOTCH | HIGH knob groups
             auto strip=m->getBounds().reduced(10,8).withTrimmedTop(24);
             auto knobStrip=strip.removeFromBottom(114);
-            const int lowR=knobStrip.getX()+int(knobStrip.getWidth()*0.25f);
-            const int notchR=lowR+int((knobStrip.getWidth()-int(knobStrip.getWidth()*0.25f))*0.45f);
+            const int lowR=knobStrip.getX()+int(knobStrip.getWidth()*0.30f);
+            const int notchR=knobStrip.getX()+int(knobStrip.getWidth()*0.61f);
             g.setColour(panelStrk.brighter(0.25f));
             for(int sx:{lowR,notchR})
                 g.drawVerticalLine(sx,(float)knobStrip.getY()+4.f,(float)knobStrip.getBottom()-4.f);
@@ -1135,8 +1297,6 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
             (float)finalPanel.getWidth()-20.f,1.5f);
         g.setColour(txtDim2); g.setFont(juce::Font(juce::FontOptions(10.5f,juce::Font::bold)));
         g.drawText("GR",limMeter.getBounds().translated(0,-13).withHeight(12),juce::Justification::centred);
-        g.drawText("RMS",rmsLabel.getBounds().translated(0,-12).withHeight(11),juce::Justification::centred);
-        g.drawText("LUFS M",lufsLabel.getBounds().translated(0,-12).withHeight(11),juce::Justification::centred);
     }
     g.setColour(txtDim2); g.setFont(juce::Font(juce::FontOptions(10.5f,juce::Font::bold)));
     g.drawText("INPUT",inMeter.getBounds().translated(0,-14).withHeight(12),juce::Justification::centred);
@@ -1151,6 +1311,22 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
     g.setColour(acc); g.setFont(juce::Font(juce::FontOptions(12.f,juce::Font::bold)));
     g.drawText("MASTER",masterPanel.reduced(14,6).removeFromTop(14),juce::Justification::topLeft);
 
+    // Loudness readout cluster (RMS + short-term LUFS, 3-second average)
+    {
+        auto lb=loudBox.toFloat();
+        g.setColour(lnf.displayCol()); g.fillRoundedRectangle(lb,4.f);
+        g.setColour(acc.withAlpha(0.40f)); g.drawRoundedRectangle(lb,4.f,1.f);
+        g.setColour(acc); g.setFont(juce::Font(juce::FontOptions(10.f,juce::Font::bold)));
+        g.drawText("LOUDNESS",loudBox.reduced(8,3).removeFromTop(13),juce::Justification::centredLeft);
+        g.setColour(txtDim2.withAlpha(0.7f));
+        g.drawText("3 s",loudBox.reduced(8,3).removeFromTop(13),juce::Justification::centredRight);
+        g.setColour(txtDim2); g.setFont(juce::Font(juce::FontOptions(11.f,juce::Font::bold)));
+        g.drawText("RMS",   juce::Rectangle<int>(loudBox.getX()+10,rmsLabel.getY(),
+            56,rmsLabel.getHeight()),juce::Justification::centredLeft);
+        g.drawText("LUFS S",juce::Rectangle<int>(loudBox.getX()+10,lufsLabel.getY(),
+            56,lufsLabel.getHeight()),juce::Justification::centredLeft);
+    }
+
     // skin toggle button outline
     g.setColour(acc.withAlpha(0.6f));
     g.drawRoundedRectangle(skinToggleBtn.getBounds().toFloat().expanded(1.f),3.f,1.f);
@@ -1162,8 +1338,9 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
 
 void HertzMagicAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    if(currentSkin==Skin::Vintage) paintVintageBackground(g);
-    else                           paintDigitalBackground(g);
+    if(currentSkin==Skin::Vintage)    paintVintageBackground(g);
+    else if(currentSkin==Skin::Space) paintSpaceBackground(g);
+    else                              paintDigitalBackground(g);
 }
 
 //==============================================================================
@@ -1212,7 +1389,6 @@ void HertzMagicAudioProcessorEditor::resized()
         pokeSoloBtn.setBounds(tr.removeFromLeft(pw).withHeight(16).reduced(1,0));
         deltaBtn.setBounds(tr.withHeight(16).reduced(1,0));
         a.removeFromTop(2);
-        auto readouts=a.removeFromBottom(56);
         auto meterCol=a.removeFromRight(30);
         meterCol.removeFromTop(13);
         limMeter.setBounds(meterCol.reduced(0,2).withWidth(16)
@@ -1223,8 +1399,6 @@ void HertzMagicAudioProcessorEditor::resized()
         layoutKnob(clipAmt,a.removeFromTop(kh).reduced(4,1));
         layoutKnob(limCeiling,a.removeFromTop(kh).reduced(4,1));
         layoutKnob(limMode,a.reduced(4,1));
-        rmsLabel.setBounds(readouts.removeFromTop(31).withTrimmedTop(11));
-        lufsLabel.setBounds(readouts.withTrimmedTop(11));
     }
 
     {
@@ -1239,11 +1413,18 @@ void HertzMagicAudioProcessorEditor::resized()
     }
     {
         auto a=masterPanel.reduced(14,6); a.removeFromTop(15);
+        loudBox=a.removeFromRight(220);
+        a.removeFromRight(16);
         int cw=a.getWidth()/2;
         for(auto* k:{&mix,&outTrim}){
             auto col=a.removeFromLeft(cw).reduced(8,0);
             k->l.setBounds(col.removeFromTop(12));
             k->s.setBounds(col);}
+        // Loudness cluster: header row, then RMS + LUFS value rows
+        auto lb=loudBox.reduced(8,4); lb.removeFromTop(15);
+        auto row1=lb.removeFromTop(lb.getHeight()/2);
+        rmsLabel.setBounds(row1.withTrimmedLeft(56));
+        lufsLabel.setBounds(lb.withTrimmedLeft(56));
     }
     layoutModules();
 }

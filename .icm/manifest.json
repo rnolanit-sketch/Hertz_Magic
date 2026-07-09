@@ -7,7 +7,7 @@
   "workspaces": {
     "source": {
       "path": "Source",
-      "fingerprint": "7b8b5507dd54003a",
+      "fingerprint": "ef2becfe2b81c0d8",
       "files": [
         "Source/PluginEditor.cpp",
         "Source/PluginEditor.h",

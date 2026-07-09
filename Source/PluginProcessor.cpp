@@ -162,6 +162,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
     layout.add(std::make_unique<P>(juce::ParameterID{"side_lp_freq",1},"Side LP Freq",
         juce::NormalisableRange<float>(200.f,8000.f,1.f,0.35f),2000.f,
         juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    // General valve output low-pass (stereo mode); 20 kHz = effectively off
+    layout.add(std::make_unique<P>(juce::ParameterID{"valve_lp",1},"Valve LP",
+        juce::NormalisableRange<float>(2000.f,20000.f,1.f,0.35f),20000.f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
 
     // ---- Final stage: clipper -> limiter (fixed at chain end) ----
     layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::clipOn,1},"Clip In",true));
@@ -384,6 +388,7 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     tapeLPz[0]=tapeLPz[1]=0.f;
     sideLPz[0]=sideLPz[1]=0.f;
     sideLPzOut[0]=sideLPzOut[1]=0.f;
+    valveLPz[0]=valveLPz[1]=0.f;
 
     for(auto* s:{&inGain,&outGain,&mixSmooth}) s->reset(sampleRate,0.05);
 }
@@ -523,6 +528,9 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
     const float vDriveMid  = apvts.getRawParameterValue("valve_drive_mid")->load();
     const float vDriveSide = apvts.getRawParameterValue("valve_drive_side")->load();
     const float sideLPFreq = apvts.getRawParameterValue("side_lp_freq")->load();
+    const float valveLPFreq= apvts.getRawParameterValue("valve_lp")->load();
+    // Stereo-mode general valve low-pass (>=19.5 kHz treated as bypass)
+    const bool  valveLPon  = !msMode && valveLPFreq<19500.f;
 
     // ---- M/S encode: L/R → Mid/Side ----------------------------------------
     if(msMode)
@@ -547,6 +555,9 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
     static const float charEven[] = { 0.03f, 0.06f, 0.10f };
     static const float charLPHi[] = { 19000.f, 16000.f, 12500.f };
     static const float charLPLo[] = { 16000.f, 13000.f, 10000.f };
+
+    const float valveLPA = valveLPon
+        ? 1.f-std::exp(-(float)(juce::MathConstants<double>::twoPi*valveLPFreq/osr)) : 0.f;
 
     // Harmonic-activity accumulators (how far each stage bends the signal)
     double tapeDiffSq=0.0, tapeSigSq=0.0, valveDiffSq=0.0, valveSigSq=0.0;
@@ -610,6 +621,7 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
                 valveDiffSq+=(double)(x-xTape)*(x-xTape);
                 valveSigSq +=(double)xTape*xTape;
             }
+            if(valveLPon&&doValve){ valveLPz[ch]+=valveLPA*(x-valveLPz[ch]); x=valveLPz[ch]; }
 
             // Recombine: add back the untouched low portion of the side
             if(isSide) x+=xLow;

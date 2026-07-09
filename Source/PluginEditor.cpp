@@ -134,7 +134,7 @@ void HertzLookAndFeel::drawRotarySlider(juce::Graphics& g,int x,int y,int w,int 
 }
 
 void HertzLookAndFeel::drawLinearSlider(juce::Graphics& g,int x,int y,int w,int h,
-    float pos,float,float,juce::Slider::SliderStyle style,juce::Slider&)
+    float pos,float,float,juce::Slider::SliderStyle style,juce::Slider& sl)
 {
     auto acc=accent();
     const auto disp=displayCol();
@@ -161,6 +161,13 @@ void HertzLookAndFeel::drawLinearSlider(juce::Graphics& g,int x,int y,int w,int 
         g.setColour(strk); g.drawRoundedRectangle(track,4.f,1.f);
         auto fill=track.reduced(2.f); fill.setRight(juce::jmax(fill.getX(),pos));
         g.setColour(acc.withAlpha(0.28f)); g.fillRoundedRectangle(fill,3.f);
+        // detent marker (e.g. 0 dB on the output fader)
+        if(auto* ds=dynamic_cast<DetentSlider*>(&sl); ds && ds->hasDetent())
+        {
+            const float mx=(float)x+(float)w*(float)sl.valueToProportionOfLength(ds->detentValue());
+            g.setColour(textBright.withAlpha(0.85f));
+            g.fillRect(mx-0.75f,track.getY()-3.f,1.5f,track.getHeight()+6.f);
+        }
         if(skin==Skin::Vintage){
             g.setColour(VintageColours::cream);
             g.fillRoundedRectangle(pos-5.f,track.getY()-4.f,10.f,track.getHeight()+8.f,3.f);
@@ -706,6 +713,48 @@ void DriveMeter::paint(juce::Graphics& g)
 }
 
 //==============================================================================
+void MasteringMeter::paint(juce::Graphics& g)
+{
+    auto r=getLocalBounds().toFloat();
+    g.setColour(display); g.fillRoundedRectangle(r,3.f);
+    g.setColour(gridLine); g.drawRoundedRectangle(r,3.f,1.f);
+    const float barX=r.getRight()-15.f;
+
+    // scale ticks (LUFS)
+    g.setFont(juce::Font(juce::FontOptions(9.f)));
+    for(float db:{0.f,-6.f,-14.f,-23.f,-30.f})
+    {
+        const float yy=y(db);
+        g.setColour(textDim.withAlpha(0.65f));
+        g.drawHorizontalLine((int)yy,r.getX()+3.f,r.getX()+7.f);
+        g.drawText(juce::String((int)db),(int)r.getX()+8,(int)yy-5,24,10,juce::Justification::left);
+    }
+    // −14 LUFS streaming reference (accent dashed) + −1 dBTP ceiling (warn)
+    g.setColour(accent.withAlpha(0.9f));
+    { float yy=y(-14.f); float dash[]={3.f,3.f};
+      g.drawDashedLine({{r.getX()+3.f,yy},{r.getRight()-3.f,yy}},dash,2,1.2f); }
+    g.setColour(HertzColours::accentOrange.withAlpha(0.7f));
+    g.drawHorizontalLine((int)y(-1.f),barX-2.f,r.getRight()-2.f);
+
+    // LUFS bar (short-term)
+    const float top=y(lufsDb);
+    auto bar=juce::Rectangle<float>(barX,top,11.f,r.getHeight()-15.f-top);
+    if(bar.getHeight()>0.f){
+        const juce::Colour c=lufsDb>-9.f?HertzColours::accentOrange:accent;
+        g.setColour(c.withAlpha(0.9f)); g.fillRoundedRectangle(bar,2.f); }
+
+    // true-peak indicator tick
+    if(peakDisp>-36.f){
+        g.setColour(peakDisp>-1.f?HertzColours::accentOrange:textBright.withAlpha(0.9f));
+        g.fillRect(barX-2.f,y(peakDisp)-1.f,15.f,2.f); }
+
+    // readout: LUFS value + label
+    g.setColour(accent); g.setFont(juce::Font(juce::FontOptions(10.5f,juce::Font::bold)));
+    g.drawText(lufsDb<=-89.f?juce::String("--"):juce::String(lufsDb,1),
+        r.removeFromBottom(13.f),juce::Justification::centred);
+}
+
+//==============================================================================
 void LevelMeter::paint(juce::Graphics& g)
 {
     auto r=getLocalBounds().toFloat();
@@ -730,10 +779,10 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     auto skinName=[](Skin s){ return s==Skin::Digital?"DIGITAL"
                                    : s==Skin::Vintage?"VINTAGE":"SPACE"; };
     auto nextSkin=[](Skin s){ return (Skin)(((int)s+1)%kNumSkins); };
-    skinToggleBtn.setButtonText(skinName(nextSkin(currentSkin)));
+    skinToggleBtn.setButtonText(skinName(currentSkin));   // shows the active skin
     skinToggleBtn.onClick=[this,skinName,nextSkin]{
         currentSkin=nextSkin(currentSkin);
-        skinToggleBtn.setButtonText(skinName(nextSkin(currentSkin)));
+        skinToggleBtn.setButtonText(skinName(currentSkin));
         applySkinToAll();
         repaint();
     };
@@ -784,6 +833,7 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     setupKnob(tapeDrive,"tape_drive","TAPE DRIVE",&satModule);
     setupKnob(tapeChar,"tape_char","CHARACTER",&satModule);
     setupKnob(valveDrive,"valve_drive","VALVE DRIVE",&satModule);
+    setupKnob(valveLP,"valve_lp","VALVE LP",&satModule);
     setupKnob(tapeDriveMid, "tape_drive_mid",  "MID DRIVE",&satModule);
     setupKnob(tapeDriveSide,"tape_drive_side", "SIDE DRIVE",&satModule);
     setupKnob(valveDriveMid, "valve_drive_mid", "MID DRIVE",&satModule);
@@ -813,6 +863,8 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     inTrim.s.setTextBoxStyle(juce::Slider::TextBoxBelow,false,62,16);   // narrow rail
     setupSlider(mix,"mix","MIX",this);
     setupSlider(outTrim,"out_trim","OUTPUT",this);
+    outTrim.s.setDetent(0.0);                       // soft catch at 0 dB
+    outTrim.s.setDoubleClickReturnValue(true,0.0);  // double-click → 0 dB
 
     // Final stage: clipper -> limiter (fixed, not draggable)
     setupKnob(limGain,"lim_gain","GAIN",this);
@@ -846,7 +898,7 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
 
     // width: rails + comp + sat + spectral + final + gaps
     // height: header + eq strip + gap + module row + gap + master + footer + margins
-    setSize(kInRailW+36+2*kModuleW+kSpectralW+kFinalW+5*kGap,
+    setSize(kInRailW+48+2*kModuleW+kSpectralW+kFinalW+5*kGap,
             52+kEqH+8+kModuleH+6+80+14+8);
     applySkinToAll();
     startTimerHz(30);
@@ -1014,10 +1066,11 @@ void HertzMagicAudioProcessorEditor::layoutModules()
 
             if(!msOn)
             {
-                // Stereo: single drive + char per stage
-                layoutKnob(tapeDrive, tapeCol.removeFromTop(80).reduced(4,0));
+                // Stereo: drive + character (tape) | drive + low-pass (valve)
+                layoutKnob(tapeDrive, tapeCol.removeFromTop(tapeCol.getHeight()/2).reduced(4,0));
                 layoutKnob(tapeChar,  tapeCol.reduced(4,0));
-                layoutKnob(valveDrive,valveCol.reduced(4,0));
+                layoutKnob(valveDrive,valveCol.removeFromTop(valveCol.getHeight()/2).reduced(4,0));
+                layoutKnob(valveLP,   valveCol.reduced(4,0));
                 for(auto* k:{&tapeDriveMid,&tapeDriveSide,&valveDriveMid,&valveDriveSide,&sideLPFreq})
                     { k->s.setBounds({}); k->l.setBounds({}); }
             }
@@ -1033,7 +1086,7 @@ void HertzMagicAudioProcessorEditor::layoutModules()
                 // Side LP knob centred at the bottom of whichever column has space
                 auto lpArea=tapeCol.withRight(valveCol.getRight()).reduced(4,0);
                 layoutKnob(sideLPFreq, lpArea.reduced(int(lpArea.getWidth()*0.15f),0));
-                for(auto* k:{&tapeDrive,&tapeChar,&valveDrive})
+                for(auto* k:{&tapeDrive,&tapeChar,&valveDrive,&valveLP})
                     { k->s.setBounds({}); k->l.setBounds({}); }
             }
         }
@@ -1068,7 +1121,7 @@ void HertzMagicAudioProcessorEditor::timerCallback()
                    processor.bandGrDb[2].load(),acc);
 
     inMeter.setValues(processor.inRmsDb.load(),processor.inLevelDb.load(),acc);
-    outMeter.setValue(processor.outLevelDb.load(),acc);
+    outMeter.setValues(processor.lufsDb.load(),processor.outLevelDb.load(),acc);
 
     float ssg[HertzMagicAudioProcessor::kSSBands];
     for(int b=0;b<HertzMagicAudioProcessor::kSSBands;++b) ssg[b]=processor.ssGrDb[b].load();
@@ -1398,7 +1451,7 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
     }
     g.setColour(txtDim2); g.setFont(juce::Font(juce::FontOptions(10.5f,juce::Font::bold)));
     g.drawText("INPUT",inMeter.getBounds().translated(0,-14).withHeight(12),juce::Justification::centred);
-    g.drawText("OUT",outMeter.getBounds().translated(0,-14).withHeight(12),juce::Justification::centred);
+    g.drawText("OUT LUFS",outMeter.getBounds().translated(0,-14).withHeight(12),juce::Justification::centred);
     g.setColour(acc.withAlpha(0.8f)); g.setFont(juce::Font(juce::FontOptions(9.5f,juce::Font::bold)));
     g.drawText(juce::String(juce::CharPointer_UTF8("RMS \xe2\x86\x92 -18")),
         juce::Rectangle<int>(meterLeft.getX(),
@@ -1448,7 +1501,7 @@ void HertzMagicAudioProcessorEditor::resized()
     r.removeFromBottom(14);
 
     meterLeft=r.removeFromLeft(kInRailW).reduced(0,4);
-    meterRight=r.removeFromRight(36).reduced(0,4);
+    meterRight=r.removeFromRight(48).reduced(0,4);   // mastering LUFS/TP meter
     r.reduce(0,4);
 
     masterPanel=r.removeFromBottom(80);
@@ -1514,8 +1567,8 @@ void HertzMagicAudioProcessorEditor::resized()
         ml.removeFromBottom(14);   // "RMS -> -18" hint painted here
         inMeter.setBounds(ml);
         layoutKnob(inTrim,trimArea);
-        auto mr=meterRight.reduced(8); mr.removeFromTop(16);
-        outMeter.setBounds(mr.withWidth(16).withCentre({meterRight.getCentreX(),mr.getCentreY()}));
+        auto mr=meterRight.reduced(5); mr.removeFromTop(16);
+        outMeter.setBounds(mr);
     }
     {
         auto a=masterPanel.reduced(14,6); a.removeFromTop(15);

@@ -82,7 +82,10 @@ Two independent stages in series, both inside one 4x-oversampled block
 - **TAPE** (Phoenix-inspired): soft compression of peaks, gentle even-harmonic
   warmth, and HF softening that deepens with drive. Character selects the
   tonal family — Luminous (open), Gold (classic), Dark (thick).
-- **VALVE** (ECC83-style): asymmetric tube shaping, 2nd-harmonic biased.
+- **VALVE** (ECC83-style): asymmetric tube shaping, 2nd-harmonic biased. In
+  stereo mode a **VALVE LP** control adds a gentle low-pass on the valve output
+  (2–20 kHz; 20 kHz = off) to round off the top. In M/S mode this is replaced
+  by the per-side SIDE LP.
 
 Each has its own drive and IN switch, and each shows an **extremity meter** —
 how hard that stage is bending the signal (the added harmonic content), so you
@@ -123,18 +126,27 @@ Punch / Dynamic), with **GAIN**, **CEILING** and:
   poke activity) and **CL** (clipper drive).
 
 ### MASTER
-Mix / Output faders (Input lives in the left rail). The dry path for Mix is
-latency-compensated, so parallel settings stay phase-coherent. The
-**LOUDNESS** cluster reads **RMS** and **short-term LUFS** as a true sliding
-average, with a **3 / 5 / 10 s** selector (3 s is the EBU R128 short-term
-window; 5 and 10 s are slower for steadier monitoring).
+Mix / Output faders (Input lives in the left rail). The **OUTPUT** fader has a
+soft **detent at 0 dB** (it catches there as you drag; double-click also snaps
+to 0) with a tick marking unity. The dry path for Mix is latency-compensated,
+so parallel settings stay phase-coherent. The **LOUDNESS** cluster reads
+**RMS** and **short-term LUFS** as a true sliding average, with a
+**3 / 5 / 10 s** selector (3 s is the EBU R128 short-term window; 5 and 10 s
+are slower for steadier monitoring).
+
+### OUTPUT METER (right rail)
+A mastering meter in the unit that matters for delivery: **LUFS**. The bar is
+short-term loudness with the scale marked, a dashed **−14 LUFS** line (the
+de-facto streaming target — Spotify/Apple/YouTube), a **−1 dBTP** ceiling line,
+and a **true-peak indicator** tick. Aim the bar around the −14 line and keep
+the peak tick under −1 for a safe, streaming-ready master.
 
 ### SKINS
-Cycle the button top-right through three looks: **DIGITAL** (phosphor green),
-**VINTAGE** (brushed-aluminium hardware), and **SPACE** — a Star Trek **LCARS**
-console: black void, starfield with warp streaks, rounded LCARS colour rails,
-and an ion-blue → amber heat shift. Purely cosmetic — the processing is
-identical in every skin.
+Cycle the button top-right through three looks (it shows the **active** skin):
+**DIGITAL** (phosphor green), **VINTAGE** (brushed-aluminium hardware), and
+**SPACE** — a Star Trek **LCARS** console: black void, starfield with warp
+streaks, rounded LCARS colour rails, and an ion-blue → amber heat shift.
+Purely cosmetic — the processing is identical in every skin.
 
 ---
 

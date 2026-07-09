@@ -70,6 +70,24 @@ enum class Skin { Digital = 0, Vintage = 1, Space = 2 };
 static constexpr int kNumSkins = 3;
 
 //==============================================================================
+/** Slider with a soft detent that catches at a value (e.g. 0 dB) mid-drag. */
+class DetentSlider : public juce::Slider
+{
+public:
+    void setDetent(double v){ detentVal=v; hasDet=true; }
+    bool hasDetent() const { return hasDet; }
+    double detentValue() const { return detentVal; }
+    double snapValue(double attempted, DragMode drag) override
+    {
+        if(hasDet && drag!=notDragging && std::abs(attempted-detentVal)<detentWidth)
+            return detentVal;
+        return attempted;
+    }
+private:
+    bool hasDet=false; double detentVal=0.0, detentWidth=0.4;
+};
+
+//==============================================================================
 class HertzLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
@@ -199,6 +217,22 @@ private:
 };
 
 //==============================================================================
+/** Mastering output meter: short-term LUFS bar + true-peak indicator, with a
+    −14 LUFS streaming reference and a −1 dBTP ceiling line. */
+class MasteringMeter : public juce::Component
+{
+public:
+    void setValues(float lufs,float peakDb,juce::Colour a)
+    { lufsDb=lufs; peakDisp=juce::jmax(peakDb,peakDisp-0.7f); accent=a; repaint(); }
+    void paint(juce::Graphics&) override;
+private:
+    float y(float db) const
+    { return juce::jmap(juce::jlimit(-36.f,0.f,db),-36.f,0.f,(float)getHeight()-15.f,5.f); }
+    float lufsDb=-90.f, peakDisp=-90.f;
+    juce::Colour accent{HertzColours::accentGreen};
+};
+
+//==============================================================================
 /** God Particle-style ideal input meter: RMS bar with a target "sweet spot"
     zone at -18 dBFS RMS. Set the input trim until the bar sits in the zone. */
 class IdealInputMeter : public juce::Component
@@ -324,7 +358,7 @@ private:
     using SliderAt=juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAt=juce::AudioProcessorValueTreeState::ButtonAttachment;
 
-    struct Knob{ juce::Slider s; juce::Label l; std::unique_ptr<SliderAt> a; };
+    struct Knob{ DetentSlider s; juce::Label l; std::unique_ptr<SliderAt> a; };
     void setupKnob(Knob&,const juce::String&,const juce::String&,juce::Component*);
     void setupSlider(Knob&,const juce::String&,const juce::String&,juce::Component*);
     void layoutKnob(Knob&,juce::Rectangle<int>);
@@ -376,7 +410,7 @@ private:
     // Saturation: tape + valve
     TapeDisplay tape;
     ValveDisplay valve;
-    Knob tapeDrive,tapeChar,valveDrive;
+    Knob tapeDrive,tapeChar,valveDrive,valveLP;
     Knob tapeDriveMid,tapeDriveSide,valveDriveMid,valveDriveSide,sideLPFreq;
     juce::ToggleButton tapeOnBtn,valveOnBtn,satMsBtn;
     std::unique_ptr<ButtonAt> tapeOnAt,valveOnAt,satMsAt;
@@ -389,7 +423,7 @@ private:
 
     // Meters + master
     IdealInputMeter inMeter;
-    LevelMeter outMeter{LevelMeter::level};
+    MasteringMeter outMeter;
     Knob inTrim,outTrim,mix;
 
     juce::Rectangle<int> headerArea,eqRow,moduleRow,masterPanel,meterLeft,meterRight,

@@ -41,6 +41,8 @@ Scaffolded projects carry their own copy at .icm/drift-check.py so that
 collaborators and CI can check/update without installing the icm skill; when
 that copy exists, messages recommend the project-local path.
 """
+from __future__ import annotations  # PEP 563: `X | None` annotations work on Python 3.7-3.9
+
 import hashlib
 import json
 import os

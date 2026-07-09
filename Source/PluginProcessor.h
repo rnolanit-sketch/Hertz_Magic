@@ -124,6 +124,7 @@ private:
     juce::dsp::IIR::Filter<float> ssDet[kSSBands];      // mono detection bandpasses
     juce::dsp::IIR::Filter<float> ssCut[kSSBands][2];   // per-channel dynamic cuts
     float ssEnvDb[kSSBands]{}, ssGrSm[kSSBands]{};
+    float cSsFreq[kSSBands]{};   // cached band centres (ss_freq0..5), rebuild detection filter on change
     void processSpectralTame (juce::AudioBuffer<float>&);
 
     // ---- Final stage (FIXED at end): clipper -> lookahead limiter ----
@@ -149,6 +150,10 @@ private:
     juce::AudioBuffer<float> dryBuffer;
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> dryDelay { 8192 };
     int latencySamples = 0;
+
+    // ---- Gain match (loudness-compensated A/B) ----
+    juce::SmoothedValue<float> gmGain;   // 1.0 = no compensation
+    float outRmsFastState = 0.0f;        // ~300 ms post-mix RMS, comparable to inRmsState
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HertzMagicAudioProcessor)
 };

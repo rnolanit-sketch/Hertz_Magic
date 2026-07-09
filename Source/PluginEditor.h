@@ -124,6 +124,9 @@ public:
     void setShowAnalyzer(bool s){ showAnalyzer=s; }
     /** Log-spaced magnitude bins in dBFS, from the editor's FFT. */
     void setSpectrum(const std::vector<float>& magsDb){ spec=magsDb; repaint(); }
+    /** Genre target-curve overlays — visual reference only, toggled independently. */
+    void setRefCurves(bool rock,bool pop,bool edm)
+    { showRock=rock; showPop=pop; showEdm=edm; repaint(); }
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
@@ -132,15 +135,25 @@ private:
     float freqToX(double f) const;
     double xToFreq(float x) const;
     float dbToY(float db) const;
+    void drawRefCurve(juce::Graphics&,const std::pair<double,float>* pts,int numPts,juce::Colour) const;
     juce::AudioProcessorValueTreeState& apvts;
     juce::Colour accent{HertzColours::accentGreen};
     juce::Colour dispCol{HertzColours::display}, gridCol{HertzColours::gridLine},
                  strokeC{HertzColours::panelStroke}, textC{HertzColours::textDim};
     std::vector<float> spec;
     bool showAnalyzer=true;
+    bool showRock=false, showPop=false, showEdm=false;
     juce::Point<float> lfNode,hfNode,n1Node,n2Node,lcNode;
     int dragging=0;   // 1=lf 2=hf 3=notch1 4=notch2 5=lowcut
 };
+
+// Fixed genre-identity colours for the reference-curve overlays (stable across skins)
+namespace RefCurveColours
+{
+    const juce::Colour rock { 0xffe0453f };   // crimson
+    const juce::Colour pop  { 0xffff4fd8 };   // magenta/pink
+    const juce::Colour edm  { 0xff29d3ff };   // electric cyan
+}
 
 //==============================================================================
 /** Frequency-axis multiband display: colour-coded band regions with GR bars
@@ -222,13 +235,14 @@ private:
 class MasteringMeter : public juce::Component
 {
 public:
-    void setValues(float lufs,float peakDb,juce::Colour a)
-    { lufsDb=lufs; peakDisp=juce::jmax(peakDb,peakDisp-0.7f); accent=a; repaint(); }
+    static constexpr float kRmsIdealLo=-8.f, kRmsIdealHi=-6.f;   // mastering RMS target zone
+    void setValues(float lufs,float rms,float peakDb,juce::Colour a)
+    { lufsDb=lufs; rmsDb=rms; peakDisp=juce::jmax(peakDb,peakDisp-0.7f); accent=a; repaint(); }
     void paint(juce::Graphics&) override;
 private:
     float y(float db) const
     { return juce::jmap(juce::jlimit(-36.f,0.f,db),-36.f,0.f,(float)getHeight()-15.f,5.f); }
-    float lufsDb=-90.f, peakDisp=-90.f;
+    float lufsDb=-90.f, rmsDb=-90.f, peakDisp=-90.f;
     juce::Colour accent{HertzColours::accentGreen};
 };
 
@@ -267,13 +281,20 @@ public:
     void setColours(juce::Colour disp_,juce::Colour grid,juce::Colour strk,juce::Colour txt)
     { dispCol=disp_; gridCol=grid; strokeC=strk; textC=txt; }
     void paint(juce::Graphics&) override;
-    void mouseDown(const juce::MouseEvent&) override;   // click a lane to enable/disable
+    void mouseDown(const juce::MouseEvent&) override;   // grabs the nearest band handle
+    void mouseDrag(const juce::MouseEvent&) override;    // drag = retune; click (no drag) = toggle
+    void mouseUp(const juce::MouseEvent&) override;
 private:
+    float freqToX(double f) const
+    { return (float)(getWidth()*std::log(f/500.0)/std::log(36.0)); }   // 500 Hz .. 18 kHz
+    double xToFreq(float x) const
+    { return 500.0*std::pow(36.0,(double)x/(double)getWidth()); }
     juce::AudioProcessorValueTreeState& apvts;
     float disp[6]{};
     juce::Colour accent{HertzColours::accentGreen};
     juce::Colour dispCol{HertzColours::display}, gridCol{HertzColours::gridLine},
                  strokeC{HertzColours::panelStroke}, textC{HertzColours::textDim};
+    int dragBand=-1;   // 0..5 while dragging, -1 otherwise
 };
 
 //==============================================================================
@@ -384,6 +405,9 @@ private:
     bool showAnalyzer=true;
     int  analyzerDetail=1;           // 0=low 1=med 2=high
 
+    // Genre reference-curve overlays (visual only, not automatable)
+    juce::TextButton rockBtn,popBtn,edmBtn;
+
     // Analyser FFT (message-thread; reads the processor scope ring)
     static constexpr int kFftOrder=11, kFftSize=1<<kFftOrder;   // 2048
     juce::dsp::FFT fft{kFftOrder};
@@ -406,6 +430,7 @@ private:
     LevelMeter limMeter{LevelMeter::reduction},pkMeter{LevelMeter::reduction},clMeter{LevelMeter::reduction};
     juce::Label rmsLabel,lufsLabel;
     juce::TextButton loudWinBtn;     // cycles 3 / 5 / 10 s loudness window
+    juce::ToggleButton gmOnBtn; std::unique_ptr<ButtonAt> gmOnAt;   // gain-match A/B
 
     // Saturation: tape + valve
     TapeDisplay tape;

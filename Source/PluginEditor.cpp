@@ -2,6 +2,21 @@
 using namespace HertzColours;
 
 //==============================================================================
+// Genre reference-curve targets — stylised typical spectral tilt, {Hz, dB}
+// anchor points, log-frequency interpolated. Visual guide only.
+//==============================================================================
+static const std::pair<double,float> kRockCurve[] = {
+    {20.0,-3.f},{50.0,-1.f},{100.0,0.f},{250.0,1.5f},{500.0,0.5f},{1000.0,0.f},
+    {2000.0,1.5f},{4000.0,2.f},{6000.0,0.5f},{10000.0,-1.f},{16000.0,-3.f},{20000.0,-5.f} };
+static const std::pair<double,float> kPopCurve[] = {
+    {20.0,-6.f},{50.0,-2.f},{100.0,0.f},{250.0,-1.f},{500.0,-1.5f},{1000.0,0.f},
+    {2000.0,1.f},{3000.0,2.5f},{5000.0,2.f},{8000.0,1.5f},{12000.0,2.f},{16000.0,1.f},{20000.0,-1.f} };
+static const std::pair<double,float> kEdmCurve[] = {
+    {20.0,2.f},{30.0,4.f},{50.0,5.f},{80.0,3.f},{120.0,0.f},{250.0,-2.f},{500.0,-3.f},
+    {1000.0,-2.f},{2000.0,-1.f},{4000.0,0.f},{6000.0,1.5f},{8000.0,2.5f},{12000.0,3.f},
+    {16000.0,2.f},{20000.0,0.f} };
+
+//==============================================================================
 // LookAndFeel — skin helpers
 //==============================================================================
 juce::Colour HertzLookAndFeel::accent() const
@@ -224,6 +239,31 @@ float EqCurveDisplay::freqToX(double f) const {return (float)(getWidth()*std::lo
 double EqCurveDisplay::xToFreq(float x) const {return 20.0*std::pow(1000.0,(double)x/(double)getWidth());}
 float EqCurveDisplay::dbToY(float db) const {return getHeight()*0.5f-juce::jlimit(-20.f,20.f,db)*(getHeight()*0.5f)/20.f;}
 
+void EqCurveDisplay::drawRefCurve(juce::Graphics& g,const std::pair<double,float>* pts,
+    int numPts,juce::Colour col) const
+{
+    auto interpDb=[&](double f)->float{
+        f=juce::jlimit(pts[0].first,pts[numPts-1].first,f);
+        for(int i=0;i<numPts-1;++i)
+            if(f>=pts[i].first&&f<=pts[i+1].first)
+            {
+                const double lf0=std::log(pts[i].first),lf1=std::log(pts[i+1].first);
+                const double t=lf1>lf0?(std::log(f)-lf0)/(lf1-lf0):0.0;
+                return (float)(pts[i].second+t*(pts[i+1].second-pts[i].second));
+            }
+        return pts[numPts-1].second;
+    };
+    juce::Path p;
+    for(int px=0;px<=getWidth();px+=3){
+        float yy=dbToY(interpDb(xToFreq((float)px)));
+        px==0?p.startNewSubPath((float)px,yy):p.lineTo((float)px,yy);}
+    juce::Path dashed;
+    float dashLens[]={6.f,4.f};
+    juce::PathStrokeType(1.6f).createDashedStroke(dashed,p,dashLens,2);
+    g.setColour(col.withAlpha(0.85f));
+    g.strokePath(dashed,juce::PathStrokeType(1.6f));
+}
+
 void EqCurveDisplay::paint(juce::Graphics& g)
 {
     double sr=48000.0; auto r=getLocalBounds().toFloat();
@@ -299,6 +339,11 @@ void EqCurveDisplay::paint(juce::Graphics& g)
                  c5->getMagnitudeForFrequency(f,sr)*c6->getMagnitudeForFrequency(f,sr);
         if(lcOn){ double h=clo->getMagnitudeForFrequency(f,sr); m*=h*h; }
         return (float)juce::Decibels::gainToDecibels(m,-60.0);};
+
+    // Genre reference-curve overlays (dashed, drawn under the live curve)
+    if(showRock) drawRefCurve(g,kRockCurve,(int)std::size(kRockCurve),RefCurveColours::rock);
+    if(showPop)  drawRefCurve(g,kPopCurve, (int)std::size(kPopCurve), RefCurveColours::pop);
+    if(showEdm)  drawRefCurve(g,kEdmCurve, (int)std::size(kEdmCurve), RefCurveColours::edm);
 
     juce::Path curve;
     for(int px=0;px<=getWidth();px+=2){
@@ -654,19 +699,21 @@ void SpectralTameDisplay::paint(juce::Graphics& g)
     g.setColour(dispCol); g.fillRoundedRectangle(r,4.f);
     g.setColour(strokeC); g.drawRoundedRectangle(r,4.f,1.f);
 
-    static const char* fl[]={"1k8","2k8","4k3","6k5","10k","15k"};
     const float H=r.getHeight()-13.f;
-    const float bw=(r.getWidth()-8.f)/6.f;
 
     g.setColour(gridCol);
     for(int i=1;i<4;++i)
         g.drawHorizontalLine((int)(2.f+(H-4.f)*(float)i/4.f),r.getX()+2.f,r.getRight()-2.f);
+    for(double f:{1000.0,5000.0,10000.0})
+        g.drawVerticalLine((int)freqToX(f),2.f,H);
 
     for(int b=0;b<6;++b)
     {
         const bool on=apvts.getRawParameterValue("ss_b"+juce::String(b))->load()>0.5f;
-        auto lane=juce::Rectangle<float>(4.f+bw*(float)b,2.f,bw,H-2.f).reduced(2.f,0.f);
-        g.setColour(accent.withAlpha(on?0.08f:0.03f));
+        const float freq=apvts.getRawParameterValue("ss_freq"+juce::String(b))->load();
+        const float cx=juce::jlimit(7.f,r.getWidth()-7.f,freqToX(freq));
+        auto lane=juce::Rectangle<float>(cx-6.f,2.f,12.f,H-2.f);
+        g.setColour(accent.withAlpha(on?0.10f:0.04f));
         g.fillRect(lane);
         if(on)
         {
@@ -679,19 +726,63 @@ void SpectralTameDisplay::paint(juce::Graphics& g)
             g.setColour(textC.withAlpha(0.45f));
             g.drawLine(lane.getX()+2.f,lane.getCentreY(),lane.getRight()-2.f,lane.getCentreY(),1.4f);
         }
+        // draggable handle
+        g.setColour(dragBand==b?juce::Colours::white:(on?accent.withAlpha(0.85f):textC.withAlpha(0.5f)));
+        g.fillRoundedRectangle(cx-3.5f,0.5f,7.f,6.f,1.5f);
+
+        const juce::String txt=freq<1000.f?juce::String((int)freq):juce::String(freq/1000.f,1)+"k";
         g.setColour((on?textC:textC.withAlpha(0.5f)));
-        g.setFont(juce::Font(juce::FontOptions(9.f,juce::Font::bold)));
-        g.drawText(fl[b],lane.withY(H+1.f).withHeight(11.f).expanded(3.f,0.f),
-            juce::Justification::centred);
+        g.setFont(juce::Font(juce::FontOptions(8.f,juce::Font::bold)));
+        g.drawText(txt,(int)cx-17,(int)H+1,34,11,juce::Justification::centred);
     }
 }
 
 void SpectralTameDisplay::mouseDown(const juce::MouseEvent& e)
 {
-    const int b=juce::jlimit(0,5,(int)((e.position.x-4.f)/((getWidth()-8.f)/6.f)));
-    const juce::String id="ss_b"+juce::String(b);
+    int best=0; float bd=1.0e9f;
+    for(int b=0;b<6;++b)
+    {
+        const float freq=apvts.getRawParameterValue("ss_freq"+juce::String(b))->load();
+        const float d=std::abs(freqToX(freq)-e.position.x);
+        if(d<bd){bd=d;best=b;}
+    }
+    dragBand=best;
+    if(auto* p=apvts.getParameter("ss_freq"+juce::String(dragBand))) p->beginChangeGesture();
+}
+
+void SpectralTameDisplay::mouseDrag(const juce::MouseEvent& e)
+{
+    if(dragBand<0) return;
+    const juce::String id="ss_freq"+juce::String(dragBand);
+    float f=(float)xToFreq(juce::jlimit(0.f,(float)getWidth(),e.position.x));
+    if(dragBand>0)
+    {
+        const float prevF=apvts.getRawParameterValue("ss_freq"+juce::String(dragBand-1))->load();
+        f=juce::jmax(f,prevF*1.08f);
+    }
+    if(dragBand<5)
+    {
+        const float nextF=apvts.getRawParameterValue("ss_freq"+juce::String(dragBand+1))->load();
+        f=juce::jmin(f,nextF/1.08f);
+    }
+    auto range=apvts.getParameterRange(id);
+    f=juce::jlimit(range.start,range.end,f);
     if(auto* p=apvts.getParameter(id))
-        p->setValueNotifyingHost(p->getValue()>0.5f?0.f:1.f);   // toggle band
+        p->setValueNotifyingHost(range.convertTo0to1(f));
+    repaint();
+}
+
+void SpectralTameDisplay::mouseUp(const juce::MouseEvent& e)
+{
+    if(dragBand<0) return;
+    if(auto* p=apvts.getParameter("ss_freq"+juce::String(dragBand))) p->endChangeGesture();
+    if(e.getDistanceFromDragStart()<3)   // a click, not a drag — toggle the band instead
+    {
+        const juce::String id="ss_b"+juce::String(dragBand);
+        if(auto* pb=apvts.getParameter(id))
+            pb->setValueNotifyingHost(pb->getValue()>0.5f?0.f:1.f);
+    }
+    dragBand=-1;
     repaint();
 }
 
@@ -735,6 +826,16 @@ void MasteringMeter::paint(juce::Graphics& g)
       g.drawDashedLine({{r.getX()+3.f,yy},{r.getRight()-3.f,yy}},dash,2,1.2f); }
     g.setColour(HertzColours::accentOrange.withAlpha(0.7f));
     g.drawHorizontalLine((int)y(-1.f),barX-2.f,r.getRight()-2.f);
+
+    // Ideal-RMS target zone (−8..−6 dBFS) — a strip on the left side of the
+    // meter that lights orange when the current output RMS sits inside it
+    {
+        const bool inZone=rmsDb>=kRmsIdealLo&&rmsDb<=kRmsIdealHi;
+        const float zTop=y(kRmsIdealHi), zBot=y(kRmsIdealLo);
+        auto strip=juce::Rectangle<float>(r.getX()+1.5f,zTop,4.f,zBot-zTop);
+        g.setColour((inZone?HertzColours::accentOrange:accent).withAlpha(inZone?0.9f:0.22f));
+        g.fillRoundedRectangle(strip,1.5f);
+    }
 
     // LUFS bar (short-term)
     const float top=y(lufsDb);
@@ -812,6 +913,21 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     eqModule.addAndMakeVisible(anlBtn);
     anDetailBtn.onClick=[this]{ analyzerDetail=(analyzerDetail+1)%3; };
     eqModule.addAndMakeVisible(anDetailBtn);
+
+    // Genre reference-curve toggles — visual target only, own fixed colours
+    auto setupRefBtn=[this](juce::TextButton& b,const juce::String& text,juce::Colour c){
+        b.setButtonText(text); b.setClickingTogglesState(true);
+        b.setColour(juce::TextButton::buttonColourId,juce::Colours::transparentBlack);
+        b.setColour(juce::TextButton::buttonOnColourId,c.withAlpha(0.22f));
+        b.setColour(juce::TextButton::textColourOffId,c.withAlpha(0.55f));
+        b.setColour(juce::TextButton::textColourOnId,c);
+        b.onClick=[this]{ eqCurve.setRefCurves(rockBtn.getToggleState(),
+            popBtn.getToggleState(),edmBtn.getToggleState()); };
+        eqModule.addAndMakeVisible(b);
+    };
+    setupRefBtn(rockBtn,"ROCK",RefCurveColours::rock);
+    setupRefBtn(popBtn, "POP", RefCurveColours::pop);
+    setupRefBtn(edmBtn, "EDM", RefCurveColours::edm);
 
     // Comp
     compModule.moduleIndex=1; addAndMakeVisible(compModule); compModule.addAndMakeVisible(mbGR);
@@ -892,6 +1008,7 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
         if(p){ int v=(int)processor.apvts.getRawParameterValue("loud_win")->load();
                p->setValueNotifyingHost((float)((v+1)%3)/2.f); } };
     addAndMakeVisible(loudWinBtn);
+    setupToggle(gmOnBtn,gmOnAt,"gm_on","GM",this);
 
     for(auto* m:modules)
         m->onDragEnd=[this](ModulePanel* d,juce::Point<int> pos){onModuleDrop(d,pos);};
@@ -1001,6 +1118,12 @@ void HertzMagicAudioProcessorEditor::layoutModules()
             anlBtn.setBounds(hdr.removeFromRight(50).withHeight(17));
             hdr.removeFromRight(4);
             anDetailBtn.setBounds(hdr.removeFromRight(54).withHeight(17));
+            hdr.removeFromRight(10);
+            edmBtn.setBounds(hdr.removeFromRight(36).withHeight(17));
+            hdr.removeFromRight(3);
+            popBtn.setBounds(hdr.removeFromRight(36).withHeight(17));
+            hdr.removeFromRight(3);
+            rockBtn.setBounds(hdr.removeFromRight(36).withHeight(17));
             eqCurve.setBounds(inner.removeFromTop(inner.getHeight()-114));
             inner.removeFromTop(6);
             // group widths follow the log frequency axis: lows left, highs right
@@ -1121,7 +1244,7 @@ void HertzMagicAudioProcessorEditor::timerCallback()
                    processor.bandGrDb[2].load(),acc);
 
     inMeter.setValues(processor.inRmsDb.load(),processor.inLevelDb.load(),acc);
-    outMeter.setValues(processor.lufsDb.load(),processor.outLevelDb.load(),acc);
+    outMeter.setValues(processor.lufsDb.load(),processor.rmsDb.load(),processor.outLevelDb.load(),acc);
 
     float ssg[HertzMagicAudioProcessor::kSSBands];
     for(int b=0;b<HertzMagicAudioProcessor::kSSBands;++b) ssg[b]=processor.ssGrDb[b].load();
@@ -1583,6 +1706,8 @@ void HertzMagicAudioProcessorEditor::resized()
         auto lb=loudBox.reduced(8,4);
         auto hdrRow=lb.removeFromTop(15);
         loudWinBtn.setBounds(hdrRow.removeFromRight(44).withHeight(15));
+        hdrRow.removeFromRight(4);
+        gmOnBtn.setBounds(hdrRow.removeFromRight(34).withHeight(15));
         auto row1=lb.removeFromTop(lb.getHeight()/2);
         rmsLabel.setBounds(row1.withTrimmedLeft(56));
         lufsLabel.setBounds(lb.withTrimmedLeft(56));

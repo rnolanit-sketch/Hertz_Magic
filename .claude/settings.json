@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3.12 .icm/drift-check.py 2>/dev/null || python3 .icm/drift-check.py 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}

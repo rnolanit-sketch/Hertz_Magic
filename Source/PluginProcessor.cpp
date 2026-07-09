@@ -20,12 +20,17 @@ namespace IDs
         limCeiling="lim_ceiling", limMode="lim_mode", limOs="lim_os", limTp="lim_tp";
     static const juce::String poke="poke", pokeSolo="poke_solo", deltaOn="delta_on";
     static const juce::String ssOn="ss_on", ssDepth="ss_depth", ssSens="ss_sens", ssBand="ss_b";
+    static const juce::String ssFreq="ss_freq";
     static const juce::String loudWin="loud_win";
+    static const juce::String gmOn="gm_on";
 }
 
-// Spectral tame band centres — the "digital tops" region
-static const float kSSFreqs[HertzMagicAudioProcessor::kSSBands] =
+// Spectral tame band centre defaults — the "digital tops" region
+static const float kSSFreqDefaults[HertzMagicAudioProcessor::kSSBands] =
     { 1800.f, 2800.f, 4300.f, 6500.f, 10000.f, 15000.f };
+// Per-band sensitivity bias (dB) toward triggering — higher bands react more readily
+static const float kSSHiSensBias[HertzMagicAudioProcessor::kSSBands] =
+    { 0.f, 0.f, 0.6f, 1.6f, 3.0f, 4.6f };
 
 static const float kLowFreqs[]       = { 20.f,30.f,60.f,100.f };
 static const float kHighBoostFreqs[] = { 3000.f,4000.f,5000.f,8000.f,10000.f,12000.f,16000.f };
@@ -204,6 +209,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
     for(int b=0;b<kSSBands;++b)
         layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::ssBand+juce::String(b),1},
             ssBandNames[b],true));
+    // Per-band centre frequency — draggable, same style as the multiband crossovers
+    static const char* ssFreqNames[kSSBands]=
+        {"Tame Freq 1","Tame Freq 2","Tame Freq 3","Tame Freq 4","Tame Freq 5","Tame Freq 6"};
+    for(int b=0;b<kSSBands;++b)
+        layout.add(std::make_unique<P>(juce::ParameterID{IDs::ssFreq+juce::String(b),1},
+            ssFreqNames[b],juce::NormalisableRange<float>(500.f,18000.f,1.f,0.35f),
+            kSSFreqDefaults[b],juce::AudioParameterFloatAttributes().withLabel("Hz")));
+
+    layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::gmOn,1},"Gain Match",false));
 
     // Loudness averaging window (EBU R128 short-term is 3 s; 5/10 s are slower)
     layout.add(std::make_unique<Pc>(juce::ParameterID{IDs::loudWin,1},"Loudness Window",
@@ -328,6 +342,11 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     limEnv=1.f; limAvgGr=0.f; inRmsState=0.f;
     pokeFast=0.f; pokeSlow=0.f;
 
+    // Gain match: slow-ish ramp so the compensation doesn't audibly pump
+    gmGain.reset(sampleRate,0.8);
+    gmGain.setCurrentAndTargetValue(1.0f);
+    outRmsFastState=0.f;
+
     // Loudness: maintain 3/5/10 s windows together in one 10 s ring
     loudLen3 =juce::jmax(1,(int)std::lround(3.0 *sampleRate));
     loudLen5 =juce::jmax(1,(int)std::lround(5.0 *sampleRate));
@@ -340,7 +359,9 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     // Spectral tame: detection bandpasses (mono) + dynamic cut filters (flat)
     for(int b=0;b<kSSBands;++b)
     {
-        const float f=juce::jmin(kSSFreqs[b],(float)(sampleRate*0.45));
+        const float freqParam=apvts.getRawParameterValue(IDs::ssFreq+juce::String(b))->load();
+        cSsFreq[b]=freqParam;
+        const float f=juce::jmin(freqParam,(float)(sampleRate*0.45));
         ssDet[b].coefficients=juce::dsp::IIR::Coefficients<float>::makeBandPass(sampleRate,f,2.0f);
         ssDet[b].reset();
         for(int ch=0;ch<2;++ch)
@@ -671,6 +692,18 @@ void HertzMagicAudioProcessor::processSpectralTame(juce::AudioBuffer<float>& buf
     const float depth = apvts.getRawParameterValue("ss_depth")->load()/10.f;
     const float sens  = apvts.getRawParameterValue("ss_sens")->load();
 
+    // ---- Rebuild a band's detection bandpass only when its frequency moved ----
+    for(int b=0;b<kSSBands;++b)
+    {
+        const float freqParam=apvts.getRawParameterValue(IDs::ssFreq+juce::String(b))->load();
+        if(freqParam!=cSsFreq[b])
+        {
+            cSsFreq[b]=freqParam;
+            const float f=juce::jmin(freqParam,(float)(currentSampleRate*0.45));
+            ssDet[b].coefficients=juce::dsp::IIR::Coefficients<float>::makeBandPass(currentSampleRate,f,2.0f);
+        }
+    }
+
     // ---- Detection: mono sum through the six bandpasses ----
     float ms[kSSBands]{};
     {
@@ -706,7 +739,7 @@ void HertzMagicAudioProcessor::processSpectralTame(juce::AudioBuffer<float>& buf
     for(int b=0;b<kSSBands;++b)
     {
         const bool bandOn=apvts.getRawParameterValue(IDs::ssBand+juce::String(b))->load()>0.5f;
-        const float over=ssEnvDb[b]-avg-thr;
+        const float over=ssEnvDb[b]-avg-thr+kSSHiSensBias[b];   // top bands trigger sooner
         const float gr=(active&&bandOn)?juce::jlimit(0.f,12.f,over)*depth:0.f;
         ssGrSm[b]+=(gr>ssGrSm[b]?0.55f:0.20f)*(gr-ssGrSm[b]);
         if(ssGrSm[b]<0.005f) ssGrSm[b]=0.f;
@@ -714,7 +747,7 @@ void HertzMagicAudioProcessor::processSpectralTame(juce::AudioBuffer<float>& buf
 
         // RBJ peaking cut written straight into the filter's coefficient
         // storage — no allocation on the audio thread
-        const double f=juce::jmin((double)kSSFreqs[b],currentSampleRate*0.45);
+        const double f=juce::jmin((double)cSsFreq[b],currentSampleRate*0.45);
         const double w0=juce::MathConstants<double>::twoPi*f/currentSampleRate;
         const double cosw=std::cos(w0), sinw=std::sin(w0);
         const double A=std::pow(10.0,(double)-ssGrSm[b]/40.0);
@@ -950,12 +983,32 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
         }
     }
 
+    float sumSqOut=0.f;
     for(int i=0;i<n;++i){
         float g=outGain.getNextValue(),m=mixSmooth.getNextValue();
         for(int ch=0;ch<numCh;++ch){
             auto& w=buffer.getWritePointer(ch)[i];
             w=(w*g*m)+(dryBuffer.getReadPointer(ch)[i]*(1.f-m));
+            sumSqOut+=w*w;
         }
+    }
+
+    // ---- Gain match: continuously trims output to the pre-processing input
+    // loudness so flipping it hears the processing at matched level (fair A/B
+    // against the DAW's own bypass). Runs before the limiter so it still
+    // protects the final ceiling either way. ----
+    {
+        const float blockMsOut=sumSqOut/(float)juce::jmax(1,n*numCh);
+        const float a=1.f-std::exp(-(float)n/(0.3f*(float)currentSampleRate));
+        outRmsFastState+=a*(blockMsOut-outRmsFastState);
+        const float outRmsFastDb=10.f*std::log10(outRmsFastState+1.0e-10f);
+        const bool gmOn=apvts.getRawParameterValue(IDs::gmOn)->load()>0.5f;
+        const float trimDb=juce::jlimit(-24.f,24.f,inRmsDb.load()-outRmsFastDb);
+        gmGain.setTargetValue(gmOn?juce::Decibels::decibelsToGain(trimDb):1.0f);
+    }
+    for(int i=0;i<n;++i){
+        const float gm=gmGain.getNextValue();
+        for(int ch=0;ch<numCh;++ch) buffer.getWritePointer(ch)[i]*=gm;
     }
 
     // ---- Fixed final stage: clipper -> limiter (always last) ----

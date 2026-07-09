@@ -11,14 +11,16 @@
   Saturation module: Phoenix-style TAPE stage into ECC83-style VALVE stage,
   independent drives and bypasses, both inside one 4x oversampled block.
 */
-class HertzMagicAudioProcessor : public juce::AudioProcessor
+class HertzMagicAudioProcessor : public juce::AudioProcessor,
+                                 private juce::AudioProcessorValueTreeState::Listener,
+                                 private juce::AsyncUpdater
 {
 public:
     enum class Module { EQ = 0, Comp = 1, Sat = 2 };
     static constexpr int kNumModules = 3;
 
     HertzMagicAudioProcessor();
-    ~HertzMagicAudioProcessor() override = default;
+    ~HertzMagicAudioProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -51,7 +53,9 @@ public:
     std::atomic<float> outLevelDb { -90.0f };
     std::atomic<float> heat       { 0.0f };
     std::atomic<float> bandGrDb[3] { {0.0f}, {0.0f}, {0.0f} };
-    std::atomic<float> limGrDb { 0.0f };
+    std::atomic<float> limGrDb  { 0.0f };
+    std::atomic<float> pokeMeter { 0.0f };   // transient-poke activity (0..1)
+    std::atomic<float> clipMeter { 0.0f };   // clipper reduction (0..1)
     std::atomic<float> rmsDb   { -90.0f };
     std::atomic<float> lufsDb  { -90.0f };
 
@@ -68,6 +72,12 @@ public:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+
+    // Runtime oversampling switch (message-thread rebuild via AsyncUpdater)
+    void parameterChanged (const juce::String&, float) override;
+    void handleAsyncUpdate() override;
+    void rebuildClipOversampling();
+    int  lastBlockSize = 0, lastNumCh = 2, satLatSamples = 0;
 
     // Lock-free mono ring for the analyser
     std::array<std::atomic<float>, kScopeSize> scopeBuf;
@@ -121,13 +131,14 @@ private:
     float limEnv = 1.0f, limAvgGr = 0.0f;
     juce::dsp::IIR::Filter<float> kShelf[2], kHip[2];   // K-weighting (BS.1770)
     float inRmsState = 0.0f;
-    // 3-second sliding windows for RMS + short-term LUFS (EBU R128 short-term)
-    std::vector<float> rmsWin, lufsWin;
-    int   loudLen = 0, loudPos = 0;
-    double rmsSum = 0.0, lufsSum = 0.0;
+    // Sliding loudness windows: 3 / 5 / 10 s maintained together, one selected
+    std::vector<float> loudRms, loudK;   // rings sized to the longest window
+    int   loudMax = 0, loudPos = 0, loudLen3 = 0, loudLen5 = 0, loudLen10 = 0;
+    double rmsSum3=0, rmsSum5=0, rmsSum10=0, kSum3=0, kSum5=0, kSum10=0;
+    std::vector<float> tpEnv;            // per-sample true-peak envelope estimate
     int lookaheadSamples = 0;
     float pokeFast = 0.0f, pokeSlow = 0.0f;             // transient detector envs
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> deltaDelay { 16384 };
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> deltaDelay { 32768 };
     juce::AudioBuffer<float> deltaBuffer;
     void processFinal (juce::AudioBuffer<float>&);
 

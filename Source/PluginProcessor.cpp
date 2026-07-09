@@ -17,9 +17,10 @@ namespace IDs
     static const juce::String n2Freq="n2_freq", n2Depth="n2_depth", n2Q="n2_q";
     static const juce::String clipOn="clip_on", clipAmt="clip_amt";
     static const juce::String limOn="lim_on", limGain="lim_gain",
-        limCeiling="lim_ceiling", limMode="lim_mode";
+        limCeiling="lim_ceiling", limMode="lim_mode", limOs="lim_os", limTp="lim_tp";
     static const juce::String poke="poke", pokeSolo="poke_solo", deltaOn="delta_on";
-    static const juce::String ssOn="ss_on", ssDepth="ss_depth", ssSens="ss_sens";
+    static const juce::String ssOn="ss_on", ssDepth="ss_depth", ssSens="ss_sens", ssBand="ss_b";
+    static const juce::String loudWin="loud_win";
 }
 
 // Spectral tame band centres — the "digital tops" region
@@ -176,6 +177,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
         juce::AudioParameterFloatAttributes().withLabel("dB")));
     layout.add(std::make_unique<Pc>(juce::ParameterID{IDs::limMode,1},"Limiter Mode",
         juce::StringArray{"Transparent","Punch","Dynamic"},0));
+    layout.add(std::make_unique<Pc>(juce::ParameterID{IDs::limOs,1},"Oversampling",
+        juce::StringArray{"4x","8x","16x"},0));
+    layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::limTp,1},"True Peak",true));
     layout.add(std::make_unique<P>(juce::ParameterID{IDs::poke,1},"Transient Poke",
         juce::NormalisableRange<float>(0.f,10.f,0.01f,0.5f),0.f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction(pct)));
@@ -190,6 +194,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
     layout.add(std::make_unique<P>(juce::ParameterID{IDs::ssSens,1},"Tame Sens",
         juce::NormalisableRange<float>(0.f,10.f,0.01f),5.f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction(pct)));
+    // Per-band enables for the spectral tame (all on by default)
+    static const char* ssBandNames[kSSBands]=
+        {"Tame 1.8k","Tame 2.8k","Tame 4.3k","Tame 6.5k","Tame 10k","Tame 15k"};
+    for(int b=0;b<kSSBands;++b)
+        layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::ssBand+juce::String(b),1},
+            ssBandNames[b],true));
+
+    // Loudness averaging window (EBU R128 short-term is 3 s; 5/10 s are slower)
+    layout.add(std::make_unique<Pc>(juce::ParameterID{IDs::loudWin,1},"Loudness Window",
+        juce::StringArray{"3 s","5 s","10 s"},0));
 
     return layout;
 }
@@ -200,7 +214,40 @@ HertzMagicAudioProcessor::HertzMagicAudioProcessor()
         .withInput ("Input", juce::AudioChannelSet::stereo(),true)
         .withOutput("Output",juce::AudioChannelSet::stereo(),true)),
       apvts(*this,nullptr,"PARAMS",createLayout())
-{}
+{
+    apvts.addParameterListener(IDs::limOs,this);
+}
+
+HertzMagicAudioProcessor::~HertzMagicAudioProcessor()
+{
+    apvts.removeParameterListener(IDs::limOs,this);
+    cancelPendingUpdate();
+}
+
+void HertzMagicAudioProcessor::parameterChanged(const juce::String& id,float)
+{
+    if(id==IDs::limOs) triggerAsyncUpdate();   // rebuild off the audio thread
+}
+
+void HertzMagicAudioProcessor::rebuildClipOversampling()
+{
+    if(lastBlockSize<=0) return;
+    const int stages=2+juce::jlimit(0,2,(int)apvts.getRawParameterValue(IDs::limOs)->load()); // 4x/8x/16x
+    auto os=std::make_unique<juce::dsp::Oversampling<float>>((size_t)lastNumCh,stages,
+        juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple,true);
+    os->initProcessing((size_t)lastBlockSize);
+    os->reset();
+    const int clipLat=(int)std::lround(os->getLatencyInSamples());
+
+    const juce::ScopedLock sl(getCallbackLock());   // serialise with processBlock
+    clipOversampler=std::move(os);
+    latencySamples=satLatSamples+clipLat+lookaheadSamples;
+    setLatencySamples(latencySamples);
+    deltaDelay.setDelay((float)juce::jlimit(0,32760,latencySamples));
+    deltaDelay.reset();
+}
+
+void HertzMagicAudioProcessor::handleAsyncUpdate() { rebuildClipOversampling(); }
 
 bool HertzMagicAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) const
 {
@@ -242,6 +289,7 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
 {
     currentSampleRate=sampleRate;
     const int numCh=juce::jmax(1,getTotalNumOutputChannels());
+    lastBlockSize=samplesPerBlock; lastNumCh=numCh;
     juce::dsp::ProcessSpec spec{sampleRate,(juce::uint32)samplesPerBlock,(juce::uint32)numCh};
 
     for(auto* f:{&lfBoostShelf,&lfAttenShelf,&hfBoostPeak,&hfAttenShelf,&notch1,&notch2,
@@ -261,10 +309,12 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     oversampler->initProcessing((size_t)samplesPerBlock);
     oversampler->reset();
 
-    clipOversampler=std::make_unique<juce::dsp::Oversampling<float>>((size_t)numCh,2,
+    const int clipStages=2+juce::jlimit(0,2,(int)apvts.getRawParameterValue("lim_os")->load());
+    clipOversampler=std::make_unique<juce::dsp::Oversampling<float>>((size_t)numCh,clipStages,
         juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple,true);
     clipOversampler->initProcessing((size_t)samplesPerBlock);
     clipOversampler->reset();
+    tpEnv.assign((size_t)samplesPerBlock,0.f);
 
     lookaheadSamples=(int)std::ceil(0.0015*sampleRate);   // 1.5 ms lookahead
     laDelay.prepare(spec);
@@ -274,11 +324,14 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     limEnv=1.f; limAvgGr=0.f; inRmsState=0.f;
     pokeFast=0.f; pokeSlow=0.f;
 
-    // 3-second sliding windows for RMS + short-term LUFS
-    loudLen=juce::jmax(1,(int)std::lround(3.0*sampleRate));
-    rmsWin.assign((size_t)loudLen,0.f);
-    lufsWin.assign((size_t)loudLen,0.f);
-    rmsSum=lufsSum=0.0; loudPos=0;
+    // Loudness: maintain 3/5/10 s windows together in one 10 s ring
+    loudLen3 =juce::jmax(1,(int)std::lround(3.0 *sampleRate));
+    loudLen5 =juce::jmax(1,(int)std::lround(5.0 *sampleRate));
+    loudLen10=juce::jmax(1,(int)std::lround(10.0*sampleRate));
+    loudMax=loudLen10;
+    loudRms.assign((size_t)loudMax,0.f);
+    loudK.assign((size_t)loudMax,0.f);
+    rmsSum3=rmsSum5=rmsSum10=kSum3=kSum5=kSum10=0.0; loudPos=0;
 
     // Spectral tame: detection bandpasses (mono) + dynamic cut filters (flat)
     for(int b=0;b<kSSBands;++b)
@@ -305,6 +358,7 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     }
 
     const int satLat=(int)std::lround(oversampler->getLatencyInSamples());
+    satLatSamples=satLat;
     latencySamples=satLat
                  +(int)std::lround(clipOversampler->getLatencyInSamples())
                  +lookaheadSamples;
@@ -317,9 +371,10 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     dryDelay.reset();
     dryBuffer.setSize(numCh,samplesPerBlock);
 
-    // Delta dry path aligns to the plugin output (full latency)
+    // Delta dry path aligns to the plugin output (full latency). Sized for the
+    // 16x worst case so runtime oversampling changes never reallocate.
     deltaDelay.prepare(spec);
-    deltaDelay.setMaximumDelayInSamples(juce::jmax(1,latencySamples+8));
+    deltaDelay.setMaximumDelayInSamples(32760);
     deltaDelay.setDelay((float)latencySamples);
     deltaDelay.reset();
     deltaBuffer.setSize(numCh,samplesPerBlock);
@@ -638,8 +693,9 @@ void HertzMagicAudioProcessor::processSpectralTame(juce::AudioBuffer<float>& buf
 
     for(int b=0;b<kSSBands;++b)
     {
+        const bool bandOn=apvts.getRawParameterValue(IDs::ssBand+juce::String(b))->load()>0.5f;
         const float over=ssEnvDb[b]-avg-thr;
-        const float gr=active?juce::jlimit(0.f,12.f,over)*depth:0.f;
+        const float gr=(active&&bandOn)?juce::jlimit(0.f,12.f,over)*depth:0.f;
         ssGrSm[b]+=(gr>ssGrSm[b]?0.55f:0.20f)*(gr-ssGrSm[b]);
         if(ssGrSm[b]<0.005f) ssGrSm[b]=0.f;
         ssGrDb[b].store(ssGrSm[b]);
@@ -694,6 +750,7 @@ void HertzMagicAudioProcessor::processFinal(juce::AudioBuffer<float>& buffer)
     // ---- Transient poke (Toneprojects-style, feeds the clipper) ----
     const float pokeAmt=apvts.getRawParameterValue("poke")->load();
     const bool  solo   =apvts.getRawParameterValue("poke_solo")->load()>0.5f;
+    float pokeAdd=0.f;
     if(pokeAmt>0.005f||solo)
     {
         const float aF=1.f-std::exp(-1.f/(0.0010f*sr));   // ~1 ms
@@ -709,15 +766,21 @@ void HertzMagicAudioProcessor::processFinal(juce::AudioBuffer<float>& buffer)
             const float t=juce::jlimit(0.f,1.f,
                 juce::jmax(0.f,pokeFast-pokeSlow)/(pokeSlow+1.0e-6f));
             const float g=1.f+amt*t;
+            pokeAdd=juce::jmax(pokeAdd,g-1.f);
             if(solo){ pl[i]*=(g-1.f); if(pr) pr[i]*=(g-1.f); }   // audition: the added layer only
             else    { pl[i]*=g;       if(pr) pr[i]*=g; }
         }
     }
+    pokeMeter.store(juce::jlimit(0.f,1.f,pokeAdd/0.7f));
     const bool clipEnable=!solo;   // audition bypasses clip/limit shaping (latency unchanged)
 
-    // ---- Clipper (own 4x oversampler, always routed for constant latency) ----
+    // ---- Clipper (own oversampler at 4/8/16x, always routed for constant latency) ----
+    const bool tpOn=apvts.getRawParameterValue("lim_tp")->load()>0.5f;
     juce::dsp::AudioBlock<float> block(buffer.getArrayOfWritePointers(),(size_t)numCh,(size_t)n);
     auto up=clipOversampler->processSamplesUp(block);
+    const int    osF=juce::jmax(1,(int)clipOversampler->getOversamplingFactor());
+    const size_t upN=up.getNumSamples();
+    float clipRedMax=0.f;
     if(clipIn&&clipEnable&&cAmt>0.01f)
     {
         const float thDb=ceilDb+juce::jmap(cAmt,0.f,10.f,12.f,0.f);
@@ -725,9 +788,28 @@ void HertzMagicAudioProcessor::processFinal(juce::AudioBuffer<float>& buffer)
         for(size_t ch=0;ch<up.getNumChannels()&&ch<2;++ch)
         {
             auto* s=up.getChannelPointer(ch);
-            for(size_t i=0;i<up.getNumSamples();++i)
+            for(size_t i=0;i<upN;++i)
+            {
+                const float pre=std::abs(s[i]);
                 s[i]=th*std::tanh(s[i]/th);
+                if(pre>1.0e-6f) clipRedMax=juce::jmax(clipRedMax,(pre-std::abs(s[i]))/pre);
+            }
         }
+    }
+    clipMeter.store(juce::jlimit(0.f,1.f,clipRedMax));
+
+    // True-peak envelope: max inter-sample magnitude per base sample (from the
+    // oversampled/clipped signal) — used for true-peak limiting when enabled.
+    for(int i=0;i<n;++i)
+    {
+        float pk=0.f;
+        const size_t base=(size_t)i*(size_t)osF;
+        for(size_t ch=0;ch<up.getNumChannels()&&ch<2;++ch)
+        {
+            auto* s=up.getChannelPointer(ch);
+            for(int j=0;j<osF;++j) pk=juce::jmax(pk,std::abs(s[base+(size_t)j]));
+        }
+        tpEnv[(size_t)i]=pk;
     }
     clipOversampler->processSamplesDown(block);
 
@@ -743,11 +825,13 @@ void HertzMagicAudioProcessor::processFinal(juce::AudioBuffer<float>& buffer)
     auto* L=buffer.getWritePointer(0);
     auto* R=numCh>1?buffer.getWritePointer(1):nullptr;
     float maxGr=0.f;
+    const int wsel=juce::jlimit(0,2,(int)apvts.getRawParameterValue("loud_win")->load());
 
     for(int i=0;i<n;++i)
     {
         const float inL=L[i], inR=R?R[i]:inL;
-        const float pk=juce::jmax(std::abs(inL),std::abs(inR));
+        float pk=juce::jmax(std::abs(inL),std::abs(inR));
+        if(tpOn) pk=juce::jmax(pk,tpEnv[(size_t)i]);   // clamp inter-sample peaks
 
         laDelay.pushSample(0,inL);
         if(R) laDelay.pushSample(1,inR);
@@ -765,24 +849,28 @@ void HertzMagicAudioProcessor::processFinal(juce::AudioBuffer<float>& buffer)
         maxGr=juce::jmax(maxGr,grNow);
         limAvgGr+=avgC*(grNow-limAvgGr);
 
-        // 3-second sliding window: RMS + K-weighted short-term LUFS (BS.1770)
+        // Sliding-window loudness: maintain 3/5/10 s sums from one 10 s ring
         const double msR=((double)oL*oL+(double)oR*oR)*0.5;
-        rmsSum += msR - (double)rmsWin[(size_t)loudPos];
-        rmsWin[(size_t)loudPos]=(float)msR;
         const float kL=kHip[0].processSample(kShelf[0].processSample(oL));
         const float kR=kHip[1].processSample(kShelf[1].processSample(oR));
         const double msK=(double)kL*kL+(double)kR*kR;
-        lufsSum += msK - (double)lufsWin[(size_t)loudPos];
-        lufsWin[(size_t)loudPos]=(float)msK;
-        if(++loudPos>=loudLen) loudPos=0;
+        const int i3=(loudPos-loudLen3+loudMax)%loudMax;
+        const int i5=(loudPos-loudLen5+loudMax)%loudMax;
+        rmsSum3+=msR-(double)loudRms[(size_t)i3]; rmsSum5+=msR-(double)loudRms[(size_t)i5]; rmsSum10+=msR-(double)loudRms[(size_t)loudPos];
+        kSum3 +=msK-(double)loudK[(size_t)i3];    kSum5 +=msK-(double)loudK[(size_t)i5];    kSum10 +=msK-(double)loudK[(size_t)loudPos];
+        loudRms[(size_t)loudPos]=(float)msR; loudK[(size_t)loudPos]=(float)msK;
+        if(++loudPos>=loudMax) loudPos=0;
 
         L[i]=oL; if(R) R[i]=oR;
     }
 
     limGrDb.store(maxGr);
-    const double invLen=1.0/(double)juce::jmax(1,loudLen);
-    rmsDb.store ((float)(10.0*std::log10(juce::jmax(0.0,rmsSum )*invLen+1.0e-12)));
-    lufsDb.store((float)(-0.691+10.0*std::log10(juce::jmax(0.0,lufsSum)*invLen+1.0e-12)));
+    const double rsum=wsel==0?rmsSum3:wsel==1?rmsSum5:rmsSum10;
+    const double ksum=wsel==0?kSum3 :wsel==1?kSum5 :kSum10;
+    const int    llen=wsel==0?loudLen3:wsel==1?loudLen5:loudLen10;
+    const double invLen=1.0/(double)juce::jmax(1,llen);
+    rmsDb.store ((float)(10.0*std::log10(juce::jmax(0.0,rsum)*invLen+1.0e-12)));
+    lufsDb.store((float)(-0.691+10.0*std::log10(juce::jmax(0.0,ksum)*invLen+1.0e-12)));
 }
 
 //==============================================================================

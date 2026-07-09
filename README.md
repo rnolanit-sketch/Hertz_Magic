@@ -60,10 +60,13 @@ Low: boost/atten, 20/30/60/100 Hz. High: bell boost with bandwidth,
 3–16 kHz, plus shelf atten at 5/10/20 kHz.
 
 - **LOW CUT** — a steep 24 dB/oct high-pass for pulling out rumble and sub,
-  sweepable **10–50 Hz**. Toggle with **LC** in the header.
+  sweepable **10–50 Hz**. Toggle with **LC**, or grab its own **roll-off node**
+  on the curve (the little high-pass symbol, distinct from the shelf circles
+  and notch squares) and drag it — grabbing it also switches the cut in.
 - **Spectrum analyser** — a live FFT of the processed output sits behind the
-  curve so you can see how the EQ (and the saturation harmonics) shape the
-  mix. Toggle with **SPEC** in the header.
+  curve so you see how the EQ (and the saturation harmonics) shape the mix.
+  **SPEC** toggles it on/off; **DET·L/M/H** selects the resolution (low =
+  smooth and broad, high = fine and snappy).
 
 ### MULTIBAND COMP
 Three bands (Low / Mid / High, Drawmer-style) split by 4th-order
@@ -94,9 +97,10 @@ Soothe-style dynamic top-end smoothing — six bands from 1.8 to 15 kHz.
 Each band is compared against the overall spectral tilt; anything poking
 above it (sizzle, harsh tops, digital glare) gets pulled down dynamically
 and released in ~120 ms. **DEPTH** sets how hard offending bands are pulled,
-**SENS** sets how easily they trigger. Zero latency; the GR display shows
-which bands are working. Start around DEPTH 4 / SENS 5 for "tame digital
-tops" behaviour.
+**SENS** sets how easily they trigger. **Click any band lane** in the display
+to disable/enable just that frequency (all on by default) — handy for leaving
+the air band alone while taming the 4–10 kHz glare. Zero latency; the display
+shows which bands are working. Start around DEPTH 4 / SENS 5.
 
 ### INPUT STAGE (left rail)
 God Particle-style ideal-level metering: the meter shows post-trim **RMS**
@@ -105,18 +109,32 @@ the bar sits in the zone (it lights up in the accent colour when you're
 there; orange means too hot). The white tick is the peak. Hitting the zone
 puts every stage after it in its designed operating range.
 
+### CLIP · LIMITER (fixed, always last)
+Transient **POKE** → soft **CLIP** → lookahead **LIMITER** (Transparent /
+Punch / Dynamic), with **GAIN**, **CEILING** and:
+
+- **OVERSMP** — clipper/limiter oversampling, selectable **4× / 8× / 16×**.
+  Higher = cleaner peak control and less aliasing on hot masters (more CPU).
+  Switching rebuilds the stage off the audio thread and re-reports latency.
+- **TP** — true-peak limiting. On, the limiter clamps inter-sample peaks
+  (measured from the oversampled signal) so the output stays under the
+  ceiling as a true-peak value, not just per-sample.
+- Three meters read at a glance: **GR** (limiter reduction), **PK** (transient
+  poke activity) and **CL** (clipper drive).
+
 ### MASTER
 Mix / Output faders (Input lives in the left rail). The dry path for Mix is
 latency-compensated, so parallel settings stay phase-coherent. The
-**LOUDNESS** cluster reads **RMS** and **short-term LUFS**, both as a true
-**3-second sliding average** (the EBU R128 short-term window) so the numbers
-sit still enough to read instead of flickering.
+**LOUDNESS** cluster reads **RMS** and **short-term LUFS** as a true sliding
+average, with a **3 / 5 / 10 s** selector (3 s is the EBU R128 short-term
+window; 5 and 10 s are slower for steadier monitoring).
 
 ### SKINS
 Cycle the button top-right through three looks: **DIGITAL** (phosphor green),
-**VINTAGE** (brushed-aluminium hardware), and **SPACE** (deep-void navy with a
-starfield and an ion-cyan → nebula-magenta heat shift). Purely cosmetic — the
-processing is identical in every skin.
+**VINTAGE** (brushed-aluminium hardware), and **SPACE** — a Star Trek **LCARS**
+console: black void, starfield with warp streaks, rounded LCARS colour rails,
+and an ion-blue → amber heat shift. Purely cosmetic — the processing is
+identical in every skin.
 
 ---
 

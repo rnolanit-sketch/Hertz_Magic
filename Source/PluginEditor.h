@@ -39,24 +39,31 @@ namespace VintageColours
     const juce::Colour bandHigh { 0xffe07030 };   // burnt orange
 }
 
-// SKIN C — Space (deep-void navy, ion cyan → nebula magenta heat, starfield)
+// SKIN C — Space / LCARS (Star Trek): black void, ion-blue → amber heat,
+// starfield with warp streaks, LCARS colour rails
 namespace SpaceColours
 {
-    const juce::Colour background   { 0xff05060e };   // deep space
-    const juce::Colour panel        { 0xff0d1022 };   // instrument navy
-    const juce::Colour panelLight   { 0xff161b38 };
-    const juce::Colour display      { 0xff070812 };   // near-black screen
-    const juce::Colour panelStroke  { 0xff232a4d };
-    const juce::Colour gridLine     { 0xff151b34 };
-    const juce::Colour accentCold   { 0xff4fd6ff };   // ion cyan (idle)
-    const juce::Colour accentHot    { 0xffff6ec7 };   // nebula magenta (pushed)
-    const juce::Colour textDim      { 0xff9aa6d6 };
-    const juce::Colour textBright   { 0xffe9edff };
-    const juce::Colour nebula1      { 0xff2a2f6b };
-    const juce::Colour nebula2      { 0xff5a2a6b };
-    const juce::Colour bandLow  { 0xff4fd6ff };
-    const juce::Colour bandMid  { 0xffb98cff };
-    const juce::Colour bandHigh { 0xffff9ec4 };
+    const juce::Colour background   { 0xff000000 };   // LCARS black
+    const juce::Colour panel        { 0xff0c0e18 };   // console navy
+    const juce::Colour panelLight   { 0xff1a1f38 };
+    const juce::Colour display      { 0xff05070f };   // near-black screen
+    const juce::Colour panelStroke  { 0xff33406e };
+    const juce::Colour gridLine     { 0xff141a30 };
+    const juce::Colour accentCold   { 0xff6a9bff };   // LCARS blue (idle)
+    const juce::Colour accentHot    { 0xffff9944 };   // LCARS amber (pushed)
+    const juce::Colour textDim      { 0xffb0b8d8 };
+    const juce::Colour textBright   { 0xfff3e3c0 };   // LCARS cream
+    const juce::Colour nebula1      { 0xff1c2a5e };
+    const juce::Colour nebula2      { 0xff3a2a5e };
+    // LCARS rail palette
+    const juce::Colour lcarsAmber   { 0xffff9944 };
+    const juce::Colour lcarsOrange  { 0xffff7733 };
+    const juce::Colour lcarsMauve   { 0xffcc88cc };
+    const juce::Colour lcarsBlue    { 0xff6a9bff };
+    const juce::Colour lcarsRed     { 0xffcc6677 };
+    const juce::Colour bandLow  { 0xff6a9bff };
+    const juce::Colour bandMid  { 0xffcc88cc };
+    const juce::Colour bandHigh { 0xffff9944 };
 }
 
 enum class Skin { Digital = 0, Vintage = 1, Space = 2 };
@@ -113,8 +120,8 @@ private:
                  strokeC{HertzColours::panelStroke}, textC{HertzColours::textDim};
     std::vector<float> spec;
     bool showAnalyzer=true;
-    juce::Point<float> lfNode,hfNode,n1Node,n2Node;
-    int dragging=0;   // 1=lf 2=hf 3=notch1 4=notch2
+    juce::Point<float> lfNode,hfNode,n1Node,n2Node,lcNode;
+    int dragging=0;   // 1=lf 2=hf 3=notch1 4=notch2 5=lowcut
 };
 
 //==============================================================================
@@ -217,15 +224,22 @@ private:
 class SpectralTameDisplay : public juce::Component
 {
 public:
+    explicit SpectralTameDisplay(juce::AudioProcessorValueTreeState& s):apvts(s){}
     void setValues(const float* g,int count,juce::Colour a)
     {
         for(int i=0;i<count&&i<6;++i) disp[i]=juce::jmax(g[i],disp[i]*0.88f);
         accent=a; repaint();
     }
+    void setColours(juce::Colour disp_,juce::Colour grid,juce::Colour strk,juce::Colour txt)
+    { dispCol=disp_; gridCol=grid; strokeC=strk; textC=txt; }
     void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;   // click a lane to enable/disable
 private:
+    juce::AudioProcessorValueTreeState& apvts;
     float disp[6]{};
     juce::Colour accent{HertzColours::accentGreen};
+    juce::Colour dispCol{HertzColours::display}, gridCol{HertzColours::gridLine},
+                 strokeC{HertzColours::panelStroke}, textC{HertzColours::textDim};
 };
 
 //==============================================================================
@@ -331,8 +345,10 @@ private:
     Knob lfBoost,lfAtten,lfFreq,hfBoost,hfBw,hfFreq,hfAtten,hfAttenSel;
     Knob n1Freq,n1Q,n2Freq,n2Q,lcFreq;
     juce::ToggleButton eqOnBtn,lcOnBtn,anlBtn;
+    juce::TextButton anDetailBtn;    // cycles analyser resolution
     std::unique_ptr<ButtonAt> eqOnAt,lcOnAt;
     bool showAnalyzer=true;
+    int  analyzerDetail=1;           // 0=low 1=med 2=high
 
     // Analyser FFT (message-thread; reads the processor scope ring)
     static constexpr int kFftOrder=11, kFftSize=1<<kFftOrder;   // 2048
@@ -350,11 +366,12 @@ private:
     juce::Label bandGRLabel[3];
 
     // Final stage (FIXED at end): clipper -> limiter
-    Knob limGain,clipAmt,limCeiling,limMode,poke;
-    juce::ToggleButton clipOnBtn,limOnBtn,pokeSoloBtn,deltaBtn;
-    std::unique_ptr<ButtonAt> clipOnAt,limOnAt,pokeSoloAt,deltaAt;
-    LevelMeter limMeter{LevelMeter::reduction};
+    Knob limGain,clipAmt,limCeiling,limMode,poke,limOs;
+    juce::ToggleButton clipOnBtn,limOnBtn,pokeSoloBtn,deltaBtn,limTpBtn;
+    std::unique_ptr<ButtonAt> clipOnAt,limOnAt,pokeSoloAt,deltaAt,limTpAt;
+    LevelMeter limMeter{LevelMeter::reduction},pkMeter{LevelMeter::reduction},clMeter{LevelMeter::reduction};
     juce::Label rmsLabel,lufsLabel;
+    juce::TextButton loudWinBtn;     // cycles 3 / 5 / 10 s loudness window
 
     // Saturation: tape + valve
     TapeDisplay tape;
@@ -379,7 +396,7 @@ private:
                          finalPanel,spectralPanel,loudBox;
 
     static constexpr int kModuleW=330, kModuleH=380, kEqH=280, kGap=10,
-                         kFinalW=190, kSpectralW=210, kInRailW=74;
+                         kFinalW=212, kSpectralW=210, kInRailW=74;
 
     void applySkinToAll();
     void paintDigitalBackground(juce::Graphics&);

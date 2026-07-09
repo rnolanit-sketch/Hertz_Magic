@@ -5,14 +5,33 @@
   "synced": "2026-07-09",
   "_root_structure": "204154c4ae384900",
   "workspaces": {
-    "source": {
-      "path": "Source",
-      "fingerprint": "ef2becfe2b81c0d8",
+    "dsp": {
+      "path": "Source/dsp",
+      "fingerprint": "a1bbae523a8a9666",
       "files": [
-        "Source/PluginEditor.cpp",
-        "Source/PluginEditor.h",
-        "Source/PluginProcessor.cpp",
-        "Source/PluginProcessor.h"
+        "Source/dsp/Eq.cpp",
+        "Source/dsp/Master.cpp",
+        "Source/dsp/MultibandComp.cpp",
+        "Source/dsp/ParamIDs.h",
+        "Source/dsp/Parameters.cpp",
+        "Source/dsp/PluginProcessor.cpp",
+        "Source/dsp/PluginProcessor.h",
+        "Source/dsp/Saturation.cpp",
+        "Source/dsp/SpectralTame.cpp"
+      ]
+    },
+    "ui": {
+      "path": "Source/ui",
+      "fingerprint": "386e31a882c845a2",
+      "files": [
+        "Source/ui/EqCurveDisplay.cpp",
+        "Source/ui/LookAndFeel.cpp",
+        "Source/ui/Meters.cpp",
+        "Source/ui/MultibandGRDisplay.cpp",
+        "Source/ui/PluginEditor.cpp",
+        "Source/ui/PluginEditor.h",
+        "Source/ui/SaturationDisplays.cpp",
+        "Source/ui/SpectralTameDisplay.cpp"
       ]
     }
   },

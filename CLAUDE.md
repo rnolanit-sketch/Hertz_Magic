@@ -15,7 +15,8 @@ under the "Ric Hertz Mastering" brand (richertz.com).
 
 | Workspace | Path | Purpose | Open when |
 |-----------|------|---------|-----------|
-| Source | `Source/` | All plugin code: DSP (PluginProcessor) + JUCE editor UI (PluginEditor) | Any parameter, DSP, or UI change |
+| dsp | `Source/dsp/` | Audio DSP — the `HertzMagicAudioProcessor` class, one module per file | Any parameter or processing change |
+| ui | `Source/ui/` | JUCE editor UI — the editor plus one file per widget group | Any knob, meter, display, or layout change |
 
 ## Folder map (top level only — each workspace maps its own depth)
 
@@ -24,13 +25,17 @@ Hertz_Magic/
 ├── CMakeLists.txt       # build config — targets: AU, VST3, Standalone
 ├── build_mac.sh         # one-shot build + install + .pkg script
 ├── README.md            # user-facing build/install instructions
-└── Source/              # all plugin code — see Source/CONTEXT.md
+└── Source/
+    ├── dsp/             # audio processing — see Source/dsp/CONTEXT.md
+    └── ui/              # editor / GUI      — see Source/ui/CONTEXT.md
 ```
 
 ## Naming conventions
 
-- Parameter string IDs live in the `IDs` namespace at the top of `PluginProcessor.cpp` —
-  stable API, only add, never rename (breaks saved sessions).
+- Parameter string IDs live in the `IDs` namespace in `Source/dsp/ParamIDs.h` (shared by
+  every dsp module) — stable API, only add, never rename (breaks saved sessions).
+- The processor is one class split across `dsp/*.cpp` translation units by module; the UI
+  is one editor split across `ui/*.cpp` by widget group. Both share a single header.
 - UI components follow `<Feature>Display` / `<Feature>Meter` (e.g. `EqCurveDisplay`,
   `MasteringMeter`).
 

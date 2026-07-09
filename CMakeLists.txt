@@ -35,8 +35,25 @@ juce_add_plugin(HertzMagic
     VST3_CATEGORIES Fx Dynamics EQ Mastering)
 
 target_sources(HertzMagic PRIVATE
-    Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp)
+    # DSP workspace — one class split across per-module translation units
+    Source/dsp/PluginProcessor.cpp
+    Source/dsp/Parameters.cpp
+    Source/dsp/Eq.cpp
+    Source/dsp/MultibandComp.cpp
+    Source/dsp/Saturation.cpp
+    Source/dsp/SpectralTame.cpp
+    Source/dsp/Master.cpp
+    # UI workspace — editor + one file per widget group
+    Source/ui/PluginEditor.cpp
+    Source/ui/LookAndFeel.cpp
+    Source/ui/EqCurveDisplay.cpp
+    Source/ui/MultibandGRDisplay.cpp
+    Source/ui/SaturationDisplays.cpp
+    Source/ui/Meters.cpp
+    Source/ui/SpectralTameDisplay.cpp)
+
+# So bare #include "PluginProcessor.h" / "PluginEditor.h" resolve from either workspace
+target_include_directories(HertzMagic PRIVATE Source/dsp Source/ui)
 
 target_compile_definitions(HertzMagic PUBLIC
     JUCE_WEB_BROWSER=0

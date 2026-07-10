@@ -20,6 +20,16 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     addAndMakeVisible(skinToggleBtn);
 
     eqModule.moduleIndex=0; addAndMakeVisible(eqModule); eqModule.addAndMakeVisible(eqCurve);
+    eqModule.initHeader("HERTZTEQ EQ",false);   // header full of toggles — no drag hint
+    // Knob-group separators, drawn by the panel itself (moves with a drag)
+    eqModule.paintExtras=[this](juce::Graphics& g){
+        auto strip=eqModule.getLocalBounds().reduced(10,8).withTrimmedTop(24);
+        auto knobStrip=strip.removeFromBottom(114);
+        g.setColour(lnf.strokeCol().brighter(0.25f));
+        for(int sx:{eqSepX1,eqSepX2})
+            if(sx>0) g.drawVerticalLine(sx,(float)knobStrip.getY()+4.f,
+                                        (float)knobStrip.getBottom()-4.f);
+    };
     setupKnob(lfBoost,"lf_boost","LOW BOOST",&eqModule);
     setupKnob(lfAtten,"lf_atten","LOW ATTEN",&eqModule);
     setupKnob(lfFreq,"lf_freq","LOW FREQ",&eqModule);
@@ -32,6 +42,10 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     setupKnob(n1Q,"n1_q","NOTCH 1 Q",&eqModule);
     setupKnob(n2Freq,"n2_freq","NOTCH 2 HZ",&eqModule);
     setupKnob(n2Q,"n2_q","NOTCH 2 Q",&eqModule);
+    setupKnob(n3Freq,"n3_freq","NOTCH 3 HZ",&eqModule);
+    setupKnob(n3Q,"n3_q","NOTCH 3 Q",&eqModule);
+    setupKnob(n4Freq,"n4_freq","NOTCH 4 HZ",&eqModule);
+    setupKnob(n4Q,"n4_q","NOTCH 4 Q",&eqModule);
     setupKnob(lcFreq,"lc_freq","LOW CUT",&eqModule);
     setupToggle(eqOnBtn,eqOnAt,"eq_on","IN",&eqModule);
     setupToggle(lcOnBtn,lcOnAt,"lc_on","LC",&eqModule);
@@ -61,6 +75,7 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
 
     // Comp
     compModule.moduleIndex=1; addAndMakeVisible(compModule); compModule.addAndMakeVisible(mbGR);
+    compModule.initHeader("MULTIBAND COMP",true);
     setupToggle(compOnBtn,compOnAt,"comp_on","IN",&compModule);
     const char* kn[]={"THRESH","RATIO","ATK","REL","MKUP"};
     for(int b=0;b<3;++b){
@@ -75,7 +90,15 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
 
     // Saturation
     satModule.moduleIndex=2; addAndMakeVisible(satModule);
+    satModule.initHeader("SATURATION",true);
     satModule.addAndMakeVisible(tape); satModule.addAndMakeVisible(valve);
+    // Stage captions — children of the panel so they move with it during drag;
+    // text doubles as the live order readout (1st / 2nd), set in timerCallback.
+    for(auto* l:{&satTapeLbl,&satValveLbl}){
+        l->setInterceptsMouseClicks(false,false);
+        l->setJustificationType(juce::Justification::centredLeft);
+        l->setFont(juce::Font(juce::FontOptions(10.5f,juce::Font::bold)));
+        satModule.addAndMakeVisible(*l);}
     setupKnob(tapeDrive,"tape_drive","TAPE DRIVE",&satModule);
     setupKnob(tapeChar,"tape_char","CHARACTER",&satModule);
     setupKnob(valveDrive,"valve_drive","VALVE DRIVE",&satModule);
@@ -89,6 +112,7 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     setupToggle(valveOnBtn,valveOnAt,"valve_on","IN",&satModule);
     setupToggle(satMsBtn,satMsAt,"sat_ms","M/S",&satModule);
     satMsBtn.onClick=[this]{ layoutModules(); repaint(); };
+    setupToggle(satSwapBtn,satSwapAt,"sat_swap","SWAP",&satModule);
     satModule.addAndMakeVisible(tapeMeter);
     satModule.addAndMakeVisible(valveMeter);
 
@@ -102,6 +126,16 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     setupKnob(ssDepth,"ss_depth","DEPTH",this);
     setupKnob(ssSens,"ss_sens","SENS",this);
     setupToggle(ssOnBtn,ssOnAt,"ss_on","IN",this);
+    // Harshness glow: flags tame activity as red "problem areas" on the EQ analyser
+    harshBtn.setButtonText("FLAG");
+    harshBtn.setClickingTogglesState(true);
+    harshBtn.setToggleState(true,juce::dontSendNotification);
+    harshBtn.setColour(juce::TextButton::buttonColourId,juce::Colours::transparentBlack);
+    harshBtn.setColour(juce::TextButton::buttonOnColourId,AlertColours::harsh.withAlpha(0.22f));
+    harshBtn.setColour(juce::TextButton::textColourOffId,AlertColours::harsh.withAlpha(0.5f));
+    harshBtn.setColour(juce::TextButton::textColourOnId,AlertColours::harsh);
+    harshBtn.onClick=[this]{ showHarshGlow=harshBtn.getToggleState(); };
+    addAndMakeVisible(harshBtn);
 
     // Input stage: ideal meter + trim knob live in the left rail
     addAndMakeVisible(inMeter); addAndMakeVisible(outMeter);
@@ -257,16 +291,24 @@ void HertzMagicAudioProcessorEditor::layoutModules()
             eqCurve.setBounds(inner.removeFromTop(inner.getHeight()-114));
             inner.removeFromTop(6);
             // group widths follow the log frequency axis: lows left, highs right
-            auto lowGrp  =inner.removeFromLeft(int(inner.getWidth()*0.30f));
-            auto notchGrp=inner.removeFromLeft(int(inner.getWidth()*0.31f));
+            // Group widths: LOW 26% | NOTCH (4 bands, 2 rows) | HIGH remainder
+            auto lowGrp  =inner.removeFromLeft(int(inner.getWidth()*0.26f));
+            auto notchGrp=inner.removeFromLeft(int(inner.getWidth()*0.44f));
             auto highGrp =inner;
+            eqSepX1=notchGrp.getX();            // separators drawn via paintExtras
+            eqSepX2=highGrp.getX();
             Knob* kl[]={&lcFreq,&lfBoost,&lfAtten,&lfFreq};
-            Knob* kn2[]={&n1Freq,&n1Q,&n2Freq,&n2Q};
+            Knob* knA[]={&n1Freq,&n1Q,&n2Freq,&n2Q};
+            Knob* knB[]={&n3Freq,&n3Q,&n4Freq,&n4Q};
             Knob* kh[]={&hfBoost,&hfBw,&hfFreq,&hfAtten,&hfAttenSel};
             int cw=lowGrp.getWidth()/4;
             for(auto* k:kl) layoutKnob(*k,lowGrp.removeFromLeft(cw).reduced(3,2));
+            // Notches: two compact rows (1/2 above, 3/4 below), comp-band sized
+            auto nRow1=notchGrp.removeFromTop(notchGrp.getHeight()/2);
+            cw=nRow1.getWidth()/4;
+            for(auto* k:knA) layoutKnob(*k,nRow1.removeFromLeft(cw).reduced(3,1));
             cw=notchGrp.getWidth()/4;
-            for(auto* k:kn2) layoutKnob(*k,notchGrp.removeFromLeft(cw).reduced(3,2));
+            for(auto* k:knB) layoutKnob(*k,notchGrp.removeFromLeft(cw).reduced(3,1));
             cw=highGrp.getWidth()/5;
             for(auto* k:kh) layoutKnob(*k,highGrp.removeFromLeft(cw).reduced(3,2));
         }
@@ -298,12 +340,15 @@ void HertzMagicAudioProcessorEditor::layoutModules()
             auto tapeCol=half.removeFromLeft(inner.getWidth()/2).reduced(3,0);
             auto valveCol=half.reduced(3,0);
 
-            // Header: IN toggles + M/S button
+            // Header: IN toggles + SWAP (order) + M/S, stage captions between
             auto tapeHdr=tapeCol.removeFromTop(18);
             tapeOnBtn.setBounds(tapeHdr.removeFromLeft(36).withHeight(16));
+            satSwapBtn.setBounds(tapeHdr.removeFromRight(52).withHeight(16));
+            satTapeLbl.setBounds(tapeHdr.withHeight(16).withTrimmedLeft(4));
             auto valveHdr=valveCol.removeFromTop(18);
             valveOnBtn.setBounds(valveHdr.removeFromLeft(36).withHeight(16));
             satMsBtn.setBounds(valveHdr.removeFromRight(44).withHeight(16));
+            satValveLbl.setBounds(valveHdr.withHeight(16).withTrimmedLeft(4));
 
             // Graphics + per-stage extremity meter
             tape.setBounds(tapeCol.removeFromTop(int(kModuleH*0.30f)));
@@ -360,10 +405,23 @@ void HertzMagicAudioProcessorEditor::timerCallback()
         ? processor.apvts.getRawParameterValue("tape_drive")->load()/10.f : 0.f;
     tape.update(smoothedHeat,tapeSpeed,acc);
     valve.setHeat(smoothedHeat,acc);
-    for(auto* m:modules) m->setAccent(acc);
+    for(auto* m:modules){
+        m->setAccent(acc);
+        m->setHeaderColours(currentSkin==Skin::Vintage?lnf.textBrightCol():acc,
+                            lnf.textDimCol());
+    }
 
     tapeMeter.setValue (processor.tapeSat.load(), acc,lnf.displayCol(),lnf.textDimCol());
     valveMeter.setValue(processor.valveSat.load(),acc,lnf.displayCol(),lnf.textDimCol());
+
+    // Stage captions double as the live processing-order readout
+    {
+        const bool swp=processor.apvts.getRawParameterValue("sat_swap")->load()>0.5f;
+        satTapeLbl.setText (swp?"TAPE 2":"TAPE 1",  juce::dontSendNotification);
+        satValveLbl.setText(swp?"VALVE 1":"VALVE 2",juce::dontSendNotification);
+        for(auto* l:{&satTapeLbl,&satValveLbl})
+            l->setColour(juce::Label::textColourId,acc.withAlpha(0.85f));
+    }
 
     const juce::Colour bcs[]={bandLow,bandMid,bandHigh};
     for(int b=0;b<3;++b){
@@ -376,9 +434,14 @@ void HertzMagicAudioProcessorEditor::timerCallback()
     inMeter.setValues(processor.inRmsDb.load(),processor.inLevelDb.load(),acc);
     outMeter.setValues(processor.lufsDb.load(),processor.rmsDb.load(),processor.outLevelDb.load(),acc);
 
-    float ssg[HertzMagicAudioProcessor::kSSBands];
-    for(int b=0;b<HertzMagicAudioProcessor::kSSBands;++b) ssg[b]=processor.ssGrDb[b].load();
+    float ssg[HertzMagicAudioProcessor::kSSBands], ssf[HertzMagicAudioProcessor::kSSBands];
+    for(int b=0;b<HertzMagicAudioProcessor::kSSBands;++b){
+        ssg[b]=processor.ssGrDb[b].load();
+        ssf[b]=processor.apvts.getRawParameterValue("ss_freq"+juce::String(b))->load();
+    }
     ssDisplay.setValues(ssg,HertzMagicAudioProcessor::kSSBands,acc);
+    // Same data, second view: red "problem area" glow on the EQ analyser
+    eqCurve.setHarshBands(ssf,ssg,HertzMagicAudioProcessor::kSSBands,showHarshGlow);
 
     limMeter.setValue(processor.limGrDb.load(),acc);
     pkMeter.setValue(processor.pokeMeter.load()*12.f,acc);
@@ -442,7 +505,11 @@ void HertzMagicAudioProcessorEditor::applySkinToAll()
       : currentSkin==Skin::Space  ?SpaceColours::gridLine:HertzColours::gridLine;
     eqCurve.setColours(lnf.displayCol(),gridC,lnf.strokeCol(),lnf.textDimCol());
     ssDisplay.setColours(lnf.displayCol(),gridC,lnf.strokeCol(),lnf.textDimCol());
-    for(auto* m:modules) m->setPanelColours(lnf.panelCol(),lnf.strokeCol());
+    for(auto* m:modules){
+        m->setPanelColours(lnf.panelCol(),lnf.strokeCol());
+        m->setHeaderColours(currentSkin==Skin::Vintage?lnf.textBrightCol():lnf.accent(),
+                            lnf.textDimCol());
+    }
     for(auto* c:getChildren()) c->repaint();
 }
 
@@ -609,59 +676,12 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
         g.drawText(chain,headerArea.withTrimmedRight(110),juce::Justification::centred);
     }
 
-    // module titles + drag hints
-    static const char* titles[]={"HERTZTEQ EQ","MULTIBAND COMP","SATURATION"};
-    for(int slot=0;slot<3;++slot){
-        int mi=processor.chainOrder[(size_t)slot];
-        auto* m=modules[(size_t)mi];
-        g.setColour(acc);
-        g.setFont(juce::Font(juce::FontOptions(12.f,juce::Font::bold)));
-        if(vtg){
-            // engraved letter-spacing look
-            g.setColour(txtDim2);
-            g.drawText(titles[mi],m->getBounds().reduced(10,0).removeFromTop(26).translated(1,1),
-                juce::Justification::centredLeft);
-            g.setColour(txtBright);
-        }
-        g.drawText(titles[mi],m->getBounds().reduced(10,0).removeFromTop(26),
-            juce::Justification::centredLeft);
-        g.setColour(txtDim2.withAlpha(0.6f));
-        g.setFont(juce::Font(juce::FontOptions(10.5f)));
-        if(mi!=0)   // EQ header is full of toggles (IN/LC/SPEC) — no room for a hint
-            g.drawText(juce::String(juce::CharPointer_UTF8("\xe2\x8c\x96 DRAG")),
-                m->getBounds().reduced(10,0).removeFromTop(26),
-                juce::Justification::centredRight);
-        if(mi==0){
-            // faint separators between LOW | NOTCH | HIGH knob groups
-            auto strip=m->getBounds().reduced(10,8).withTrimmedTop(24);
-            auto knobStrip=strip.removeFromBottom(114);
-            const int lowR=knobStrip.getX()+int(knobStrip.getWidth()*0.30f);
-            const int notchR=knobStrip.getX()+int(knobStrip.getWidth()*0.61f);
-            g.setColour(panelStrk.brighter(0.25f));
-            for(int sx:{lowR,notchR})
-                g.drawVerticalLine(sx,(float)knobStrip.getY()+4.f,(float)knobStrip.getBottom()-4.f);
-        }
-        if(mi==2){
-            auto inner3=m->getBounds().reduced(10,8).withTrimmedTop(28);
-            g.setColour(acc.withAlpha(0.85f));
-            g.setFont(juce::Font(juce::FontOptions(10.5f,juce::Font::bold)));
-            g.drawText("TAPE",inner3.removeFromLeft(inner3.getWidth()/2).removeFromTop(16),
-                juce::Justification::centredLeft);
-            g.drawText("VALVE",m->getBounds().reduced(10,8).withTrimmedTop(28)
-                .withTrimmedLeft((m->getWidth()-20)/2+6).removeFromTop(16),
-                juce::Justification::centredLeft);
-            // M/S mode indicator
-            const bool msOn=processor.apvts.getRawParameterValue("sat_ms")->load()>0.5f;
-            if(msOn){
-                g.setColour(acc);
-                g.setFont(juce::Font(juce::FontOptions(9.5f,juce::Font::bold)));
-                // tape column mid/side labels
-                auto tapeArea=m->getBounds().reduced(10,8).withTrimmedTop(28+22+int(kModuleH*0.32f)+8);
-                auto tapeH=tapeArea.getWidth()/2;
-                g.drawText("MID", tapeArea.removeFromLeft(tapeH).removeFromTop(14),juce::Justification::centred);
-                g.drawText("SIDE",tapeArea.removeFromTop(14),juce::Justification::centred);
-            }
-        }}
+    // Module titles, drag hints, stage captions, and the EQ knob-group
+    // separators are now real children of each ModulePanel (or its
+    // paintExtras) so they move atomically with the panel during a drag —
+    // no editor-overlay text left here to ghost. (Vintage's engraved
+    // double-draw was retired with the migration.)
+    juce::ignoreUnused(vtg,txtBright);
 
     // meter rails
     for(auto* mr:{&meterLeft,&meterRight}){
@@ -679,9 +699,6 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
         g.setColour(acc.withAlpha(0.35f));
         g.fillRect((float)spectralPanel.getX()+10.f,(float)spectralPanel.getY()+27.f,
             (float)spectralPanel.getWidth()-20.f,1.5f);
-        g.setColour(txtDim2.withAlpha(0.6f)); g.setFont(juce::Font(juce::FontOptions(10.f)));
-        g.drawText("POST-SAT",spectralPanel.reduced(10,0).removeFromTop(26)
-            .withTrimmedRight(46),juce::Justification::centredRight);
     }
 
     // fixed final panel
@@ -771,8 +788,10 @@ void HertzMagicAudioProcessorEditor::resized()
     {
         auto a=spectralPanel.reduced(10,8);
         a.removeFromTop(24);
-        ssOnBtn.setBounds(spectralPanel.reduced(10,4).removeFromTop(20)
-            .removeFromRight(36).withHeight(17));
+        auto hdrT=spectralPanel.reduced(10,4).removeFromTop(20);
+        ssOnBtn.setBounds(hdrT.removeFromRight(36).withHeight(17));
+        hdrT.removeFromRight(4);
+        harshBtn.setBounds(hdrT.removeFromRight(46).withHeight(17));
         ssDisplay.setBounds(a.removeFromTop(120));
         a.removeFromTop(8);
         auto ka=a.removeFromTop(juce::jmin(a.getHeight(),110));

@@ -127,6 +127,13 @@ public:
     /** Genre target-curve overlays — visual reference only, toggled independently. */
     void setRefCurves(bool rock,bool pop,bool edm)
     { showRock=rock; showPop=pop; showEdm=edm; repaint(); }
+    /** Harshness flags from Spectral Tame: band centres + live GR (dB). Bands
+        actively cutting glow red on the analyser — "problem area" markers. */
+    void setHarshBands(const float* freqs,const float* grDb,int count,bool enabled)
+    {
+        harshCount=juce::jmin(count,6); harshOn=enabled;
+        for(int i=0;i<harshCount;++i){ harshFreq[i]=freqs[i]; harshGr[i]=grDb[i]; }
+    }
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
@@ -143,8 +150,11 @@ private:
     std::vector<float> spec;
     bool showAnalyzer=true;
     bool showRock=false, showPop=false, showEdm=false;
-    juce::Point<float> lfNode,hfNode,n1Node,n2Node,lcNode;
-    int dragging=0;   // 1=lf 2=hf 3=notch1 4=notch2 5=lowcut
+    float harshFreq[6]{}, harshGr[6]{};
+    int  harshCount=0;
+    bool harshOn=false;
+    juce::Point<float> lfNode,hfNode,n1Node,n2Node,n3Node,n4Node,lcNode;
+    int dragging=0;   // 1=lf 2=hf 3..6=notch1..4 7=lowcut
 };
 
 // Fixed genre-identity colours for the reference-curve overlays (stable across skins)
@@ -153,6 +163,12 @@ namespace RefCurveColours
     const juce::Colour rock { 0xffe0453f };   // crimson
     const juce::Colour pop  { 0xffff4fd8 };   // magenta/pink
     const juce::Colour edm  { 0xff29d3ff };   // electric cyan
+}
+
+// Fixed alert colours (stable across skins, like RefCurveColours)
+namespace AlertColours
+{
+    const juce::Colour harsh { 0xffff4438 };  // "problem area" warning red
 }
 
 //==============================================================================
@@ -319,8 +335,42 @@ class ModulePanel : public juce::Component
 {
 public:
     std::function<void(ModulePanel*,juce::Point<int>)> onDragEnd;
+    /** Optional extra drawing in panel-local coords (e.g. EQ knob-group
+        separators) — painted by the panel itself so it moves atomically
+        with the panel during a drag (no overlay desync/ghosting). */
+    std::function<void(juce::Graphics&)> paintExtras;
     int moduleIndex=0;
 
+    ModulePanel()
+    {
+        // Title + drag hint are real children so they travel with the panel
+        // during a drag (they used to be editor-overlay text, which ghosted).
+        for(auto* l:{&title,&hint})
+        {
+            l->setInterceptsMouseClicks(false,false);   // header stays draggable
+            addAndMakeVisible(*l);
+        }
+        title.setJustificationType(juce::Justification::centredLeft);
+        title.setFont(juce::Font(juce::FontOptions(12.f,juce::Font::bold)));
+        hint.setJustificationType(juce::Justification::centredRight);
+        hint.setFont(juce::Font(juce::FontOptions(12.f)));
+    }
+    void initHeader(const juce::String& t,bool showHint)
+    {
+        title.setText(t,juce::dontSendNotification);
+        hint.setText(showHint?juce::String(juce::CharPointer_UTF8("\xe2\x8c\x96 DRAG"))
+                             :juce::String(),juce::dontSendNotification);
+    }
+    void setHeaderColours(juce::Colour titleCol,juce::Colour hintCol)
+    {
+        title.setColour(juce::Label::textColourId,titleCol);
+        hint.setColour(juce::Label::textColourId,hintCol.withAlpha(0.6f));
+    }
+    void resized() override
+    {
+        auto h=getLocalBounds().reduced(10,0).removeFromTop(26);
+        title.setBounds(h); hint.setBounds(h);
+    }
     void paint(juce::Graphics& g) override
     {
         auto r=getLocalBounds().toFloat();
@@ -331,6 +381,7 @@ public:
         // accent underline beneath the header strip — a little more life
         g.setColour(accentColour.withAlpha(0.35f));
         g.fillRect(r.getX()+10.f,27.f,r.getWidth()-20.f,1.5f);
+        if(paintExtras) paintExtras(g);
     }
     void setPanelColours(juce::Colour fill,juce::Colour strk)
     { panelFill=fill; panelStrokeC=strk; repaint(); }
@@ -357,6 +408,7 @@ public:
 private:
     bool dragging=false;
     juce::Point<int> dragStart;
+    juce::Label title,hint;
     juce::Colour accentColour{HertzColours::accentGreen};
     juce::Colour panelFill{HertzColours::panel}, panelStrokeC{HertzColours::panelStroke};
 };
@@ -398,7 +450,8 @@ private:
     // EQ
     EqCurveDisplay eqCurve;
     Knob lfBoost,lfAtten,lfFreq,hfBoost,hfBw,hfFreq,hfAtten,hfAttenSel;
-    Knob n1Freq,n1Q,n2Freq,n2Q,lcFreq;
+    Knob n1Freq,n1Q,n2Freq,n2Q,n3Freq,n3Q,n4Freq,n4Q,lcFreq;
+    int  eqSepX1=0,eqSepX2=0;        // knob-group separators (panel-local x)
     juce::ToggleButton eqOnBtn,lcOnBtn,anlBtn;
     juce::TextButton anDetailBtn;    // cycles analyser resolution
     std::unique_ptr<ButtonAt> eqOnAt,lcOnAt;
@@ -437,14 +490,17 @@ private:
     ValveDisplay valve;
     Knob tapeDrive,tapeChar,valveDrive,valveLP;
     Knob tapeDriveMid,tapeDriveSide,valveDriveMid,valveDriveSide,sideLPFreq;
-    juce::ToggleButton tapeOnBtn,valveOnBtn,satMsBtn;
-    std::unique_ptr<ButtonAt> tapeOnAt,valveOnAt,satMsAt;
+    juce::ToggleButton tapeOnBtn,valveOnBtn,satMsBtn,satSwapBtn;
+    std::unique_ptr<ButtonAt> tapeOnAt,valveOnAt,satMsAt,satSwapAt;
     DriveMeter tapeMeter{"TAPE"},valveMeter{"VALVE"};
+    juce::Label satTapeLbl,satValveLbl;   // stage captions (children of satModule)
 
     // Spectral tame (fixed, post-saturation)
     SpectralTameDisplay ssDisplay;
     Knob ssDepth,ssSens;
     juce::ToggleButton ssOnBtn; std::unique_ptr<ButtonAt> ssOnAt;
+    juce::TextButton harshBtn;            // red "problem area" glow on the EQ analyser
+    bool showHarshGlow=true;
 
     // Meters + master
     IdealInputMeter inMeter;

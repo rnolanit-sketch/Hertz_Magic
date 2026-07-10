@@ -57,7 +57,10 @@ frequency simultaneously to carve a low-mid dip while the sub stays full.
 Drag the nodes on the curve display, or use the knobs. Knobs are grouped
 **LOW · NOTCH · HIGH** left-to-right, under their part of the frequency axis.
 Low: boost/atten, 20/30/60/100 Hz. High: bell boost with bandwidth,
-3–16 kHz, plus shelf atten at 5/10/20 kHz.
+3–16 kHz, plus shelf atten at 5/10/20 kHz. **Four fully parametric notches**
+(freq / gain / Q each, two rows of knobs) — each is a draggable square on the
+curve, so you can park one cut in the 2–4 kHz vocal-edge zone and another at
+5–8 kHz sibilance while keeping two spare.
 
 - **LOW CUT** — a steep 24 dB/oct high-pass for pulling out rumble and sub,
   sweepable **10–50 Hz**. Toggle with **LC**, or grab its own **roll-off node**
@@ -75,9 +78,13 @@ Per band: Threshold, Ratio, Attack, Release, Makeup, Solo (S) and
 Bypass (B), with colour-coded GR meters (cyan/green/amber).
 Mastering starting point: 1–2 dB GR per band, ratios around 2:1.
 
-### SATURATION — Tape → Valve
+### SATURATION — Tape ⇄ Valve
 Two independent stages in series, both inside one 4x-oversampled block
-(linear-phase filters, latency reported to Logic):
+(linear-phase filters, latency reported to Logic). **SWAP** reverses the
+processing order to Valve → Tape — the tape stage's HF softening then rounds
+off the valve's upper harmonics instead of feeding them, a genuinely different
+top-end character worth an A/B when a master reads harsh. The stage captions
+read **TAPE 1 / VALVE 2** (or 2/1) so the live order is always visible.
 
 - **TAPE** (Phoenix-inspired): soft compression of peaks, gentle even-harmonic
   warmth, and HF softening that deepens with drive. Character selects the
@@ -104,6 +111,12 @@ and released in ~120 ms. **DEPTH** sets how hard offending bands are pulled,
 to disable/enable just that frequency (all on by default) — handy for leaving
 the air band alone while taming the 4–10 kHz glare. Zero latency; the display
 shows which bands are working. Start around DEPTH 4 / SENS 5.
+
+**FLAG** paints the same live detection onto the main EQ analyser as a **red
+"problem area" glow**: any tame band actively cutting glows at its frequency
+on the curve display, brighter the harder it's working — so you can see where
+the harshness sits and counter it with a notch or the saturation controls, not
+just let the tame absorb it. Purely visual; toggle it off any time.
 
 ### INPUT STAGE (left rail)
 God Particle-style ideal-level metering: the meter shows post-trim **RMS**

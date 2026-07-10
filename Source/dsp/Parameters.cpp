@@ -68,6 +68,22 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
         juce::AudioParameterFloatAttributes().withLabel("dB")));
     layout.add(std::make_unique<P>(juce::ParameterID{IDs::n2Q,1},"Notch 2 Q",
         juce::NormalisableRange<float>(1.f,40.f,0.1f,0.5f),10.f));
+    layout.add(std::make_unique<P>(juce::ParameterID{IDs::n3Freq,1},"Notch 3 Freq",
+        juce::NormalisableRange<float>(40.f,18000.f,1.f,0.25f),1000.f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    layout.add(std::make_unique<P>(juce::ParameterID{IDs::n3Depth,1},"Notch 3 Gain",
+        juce::NormalisableRange<float>(-30.f,15.f,0.1f),0.f,
+        juce::AudioParameterFloatAttributes().withLabel("dB")));
+    layout.add(std::make_unique<P>(juce::ParameterID{IDs::n3Q,1},"Notch 3 Q",
+        juce::NormalisableRange<float>(1.f,40.f,0.1f,0.5f),10.f));
+    layout.add(std::make_unique<P>(juce::ParameterID{IDs::n4Freq,1},"Notch 4 Freq",
+        juce::NormalisableRange<float>(40.f,18000.f,1.f,0.25f),8000.f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    layout.add(std::make_unique<P>(juce::ParameterID{IDs::n4Depth,1},"Notch 4 Gain",
+        juce::NormalisableRange<float>(-30.f,15.f,0.1f),0.f,
+        juce::AudioParameterFloatAttributes().withLabel("dB")));
+    layout.add(std::make_unique<P>(juce::ParameterID{IDs::n4Q,1},"Notch 4 Q",
+        juce::NormalisableRange<float>(1.f,40.f,0.1f,0.5f),10.f));
 
     layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::compOn,1},"Comp In",true));
     layout.add(std::make_unique<P>(juce::ParameterID{IDs::xover1,1},"XO1",
@@ -115,6 +131,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
     layout.add(std::make_unique<P>(juce::ParameterID{IDs::valveDrive,1},"Valve Drive",
         juce::NormalisableRange<float>(0.f,10.f,0.01f,0.5f),2.f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction(pct)));
+    layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::satSwap,1},"Sat Order Swap",false));
 
     // ---- M/S mode for saturation ----
     layout.add(std::make_unique<Pb>(juce::ParameterID{"sat_ms",1},"Sat M/S",false));

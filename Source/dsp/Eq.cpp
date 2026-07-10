@@ -17,15 +17,23 @@ void HertzMagicAudioProcessor::updateEqCoefficients()
     float n2F=apvts.getRawParameterValue(IDs::n2Freq)->load();
     float n2D=apvts.getRawParameterValue(IDs::n2Depth)->load();
     float n2Qv=apvts.getRawParameterValue(IDs::n2Q)->load();
+    float n3F=apvts.getRawParameterValue(IDs::n3Freq)->load();
+    float n3D=apvts.getRawParameterValue(IDs::n3Depth)->load();
+    float n3Qv=apvts.getRawParameterValue(IDs::n3Q)->load();
+    float n4F=apvts.getRawParameterValue(IDs::n4Freq)->load();
+    float n4D=apvts.getRawParameterValue(IDs::n4Depth)->load();
+    float n4Qv=apvts.getRawParameterValue(IDs::n4Q)->load();
     float lcF=apvts.getRawParameterValue(IDs::lcFreq)->load();
 
     if(lfB==cLfBoost&&lfA==cLfAtten&&lfF==cLfFreq&&hfB==cHfBoost
        &&hfW==cHfBw&&hfF==cHfFreq&&hfA==cHfAtten&&hfS==cHfAttenSel
        &&n1F==cN1F&&n1D==cN1D&&n1Qv==cN1Q&&n2F==cN2F&&n2D==cN2D&&n2Qv==cN2Q
+       &&n3F==cN3F&&n3D==cN3D&&n3Qv==cN3Q&&n4F==cN4F&&n4D==cN4D&&n4Qv==cN4Q
        &&lcF==cLcFreq) return;
     cLfBoost=lfB;cLfAtten=lfA;cLfFreq=lfF;cHfBoost=hfB;
     cHfBw=hfW;cHfFreq=hfF;cHfAtten=hfA;cHfAttenSel=hfS;
     cN1F=n1F;cN1D=n1D;cN1Q=n1Qv;cN2F=n2F;cN2D=n2D;cN2Q=n2Qv;
+    cN3F=n3F;cN3D=n3D;cN3Q=n3Qv;cN4F=n4F;cN4D=n4D;cN4Q=n4Qv;
     cLcFreq=lcF;
 
     double sr=currentSampleRate;
@@ -46,6 +54,10 @@ void HertzMagicAudioProcessor::updateEqCoefficients()
         juce::jmax(1.f,n1Qv),juce::Decibels::decibelsToGain(n1D));
     *notch2.state=*Coeffs::makePeakFilter(sr,juce::jmin(n2F,(float)(sr*0.45)),
         juce::jmax(1.f,n2Qv),juce::Decibels::decibelsToGain(n2D));
+    *notch3.state=*Coeffs::makePeakFilter(sr,juce::jmin(n3F,(float)(sr*0.45)),
+        juce::jmax(1.f,n3Qv),juce::Decibels::decibelsToGain(n3D));
+    *notch4.state=*Coeffs::makePeakFilter(sr,juce::jmin(n4F,(float)(sr*0.45)),
+        juce::jmax(1.f,n4Qv),juce::Decibels::decibelsToGain(n4D));
 }
 
 //==============================================================================

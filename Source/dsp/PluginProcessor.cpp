@@ -42,9 +42,10 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     lastBlockSize=samplesPerBlock; lastNumCh=numCh;
     juce::dsp::ProcessSpec spec{sampleRate,(juce::uint32)samplesPerBlock,(juce::uint32)numCh};
 
-    for(auto* f:{&lfBoostShelf,&lfAttenShelf,&hfBoostPeak,&hfAttenShelf,&notch1,&notch2,
+    for(auto* f:{&lfBoostShelf,&lfAttenShelf,&hfBoostPeak,&hfAttenShelf,
+                 &notch1,&notch2,&notch3,&notch4,
                  &lowCutA,&lowCutB}){f->prepare(spec);f->reset();}
-    cLfBoost=-1; cN1F=-1; cLcFreq=-1; updateEqCoefficients();
+    cLfBoost=-1; cN1F=-1; cN3F=-1; cLcFreq=-1; updateEqCoefficients();
 
     // Analyser ring
     for(auto& s:scopeBuf) s.store(0.f,std::memory_order_relaxed);
@@ -212,6 +213,7 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
             lfBoostShelf.process(ctx);lfAttenShelf.process(ctx);
             hfBoostPeak.process(ctx);hfAttenShelf.process(ctx);
             notch1.process(ctx);notch2.process(ctx);
+            notch3.process(ctx);notch4.process(ctx);
         }
         else if(mod==(int)Module::Comp && apvts.getRawParameterValue(IDs::compOn)->load()>0.5f)
         {

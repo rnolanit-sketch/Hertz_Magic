@@ -18,6 +18,7 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
     const float valveLPFreq= apvts.getRawParameterValue("valve_lp")->load();
     // Stereo-mode general valve low-pass (>=19.5 kHz treated as bypass)
     const bool  valveLPon  = !msMode && valveLPFreq<19500.f;
+    const bool  swapOrder  = apvts.getRawParameterValue(IDs::satSwap)->load()>0.5f;   // Valve -> Tape
 
     // ---- M/S encode: L/R → Mid/Side ----------------------------------------
     if(msMode)
@@ -79,6 +80,33 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
             ? 1.f-std::exp(-(float)(juce::MathConstants<double>::twoPi*sideLPFreq/osr))
             : 0.f;
 
+        // The two shaper stages as order-agnostic steps. Each does exactly what
+        // its old inline block did, including harmonic-activity accumulation.
+        // The valve output low-pass stays glued to the valve stage regardless
+        // of order.
+        auto applyTape=[&](float x)->float
+        {
+            if(!doTape) return x;
+            const float xPre=x;
+            float shaped=std::tanh(kt*x)/kt;
+            shaped+=even*shaped*shaped;
+            z+=lpA*(shaped-z);
+            x=z;
+            tapeDiffSq+=(double)(x-xPre)*(x-xPre);
+            tapeSigSq +=(double)xPre*xPre;
+            return x;
+        };
+        auto applyValve=[&](float x)->float
+        {
+            if(!doValve) return x;
+            const float xPre=x;
+            x=(std::tanh(kv*(x+bias))-tb)/vNorm;
+            valveDiffSq+=(double)(x-xPre)*(x-xPre);
+            valveSigSq +=(double)xPre*xPre;
+            if(valveLPon){ valveLPz[ch]+=valveLPA*(x-valveLPz[ch]); x=valveLPz[ch]; }
+            return x;
+        };
+
         for(size_t i=0;i<up.getNumSamples();++i)
         {
             float x=s[i];
@@ -91,24 +119,9 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
                 xLow=sideLPz[ch];
                 x=x-xLow;   // only the high side gets saturated
             }
-            const float xPre=x;            // tape input
-            if(doTape)
-            {
-                float shaped=std::tanh(kt*x)/kt;
-                shaped+=even*shaped*shaped;
-                z+=lpA*(shaped-z);
-                x=z;
-                tapeDiffSq+=(double)(x-xPre)*(x-xPre);
-                tapeSigSq +=(double)xPre*xPre;
-            }
-            const float xTape=x;           // valve input
-            if(doValve)
-            {
-                x=(std::tanh(kv*(x+bias))-tb)/vNorm;
-                valveDiffSq+=(double)(x-xTape)*(x-xTape);
-                valveSigSq +=(double)xTape*xTape;
-            }
-            if(valveLPon&&doValve){ valveLPz[ch]+=valveLPA*(x-valveLPz[ch]); x=valveLPz[ch]; }
+
+            if(swapOrder) x=applyTape(applyValve(x));   // Valve -> Tape
+            else          x=applyValve(applyTape(x));   // Tape -> Valve (default)
 
             // Recombine: add back the untouched low portion of the side
             if(isSide) x+=xLow;

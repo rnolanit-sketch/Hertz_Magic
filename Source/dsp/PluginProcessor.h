@@ -90,11 +90,12 @@ private:
     using Coeffs    = juce::dsp::IIR::Coefficients<float>;
     using StereoIIR = juce::dsp::ProcessorDuplicator<Filter, Coeffs>;
     StereoIIR lfBoostShelf, lfAttenShelf, hfBoostPeak, hfAttenShelf;
-    StereoIIR notch1, notch2;
+    StereoIIR notch1, notch2, notch3, notch4;
     StereoIIR lowCutA, lowCutB;      // LR4 (24 dB/oct) high-pass — "low cut"
     float cLfBoost{-1},cLfAtten{-1},cHfBoost{-1},cHfBw{-1},cHfAtten{-1};
     int   cLfFreq{-1},cHfFreq{-1},cHfAttenSel{-1};
     float cN1F{-1},cN1D{-1},cN1Q{-1},cN2F{-1},cN2D{-1},cN2Q{-1};
+    float cN3F{-1},cN3D{-1},cN3Q{-1},cN4F{-1},cN4D{-1},cN4Q{-1};
     float cLcFreq{-1};
 
     // ---- Multiband comp ----

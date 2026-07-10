@@ -22,8 +22,11 @@ namespace IDs
         release="release_", makeup="makeup_", bandSolo="solo_", bandByp="byp_";
     static const juce::String tapeOn="tape_on", tapeDrive="tape_drive", tapeChar="tape_char";
     static const juce::String valveOn="valve_on", valveDrive="valve_drive";
+    static const juce::String satSwap="sat_swap";   // true = Valve -> Tape order
     static const juce::String n1Freq="n1_freq", n1Depth="n1_depth", n1Q="n1_q";
     static const juce::String n2Freq="n2_freq", n2Depth="n2_depth", n2Q="n2_q";
+    static const juce::String n3Freq="n3_freq", n3Depth="n3_depth", n3Q="n3_q";
+    static const juce::String n4Freq="n4_freq", n4Depth="n4_depth", n4Q="n4_q";
     static const juce::String clipOn="clip_on", clipAmt="clip_amt";
     static const juce::String limOn="lim_on", limGain="lim_gain",
         limCeiling="lim_ceiling", limMode="lim_mode", limOs="lim_os", limTp="lim_tp";

@@ -74,6 +74,22 @@ void EqCurveDisplay::paint(juce::Graphics& g)
         g.strokePath(top,juce::PathStrokeType(1.0f));
     }
 
+    // ---- Harshness "problem area" glow (from Spectral Tame's live GR) ----
+    if(harshOn)
+        for(int b=0;b<harshCount;++b)
+        {
+            if(harshGr[b]<=0.3f) continue;   // only bands actively being tamed
+            const float x=freqToX(harshFreq[b]);
+            const float halfW=juce::jmax(14.f,
+                (freqToX(harshFreq[b]*1.35)-freqToX(harshFreq[b]/1.35))*0.5f);
+            const float a=juce::jmap(juce::jlimit(0.3f,12.f,harshGr[b]),
+                                     0.3f,12.f,0.10f,0.45f);
+            juce::ColourGradient glow(AlertColours::harsh.withAlpha(a),x,(float)H*0.5f,
+                AlertColours::harsh.withAlpha(0.f),x+halfW,(float)H*0.5f,true);
+            g.setGradientFill(glow);
+            g.fillRect(juce::Rectangle<float>(x-halfW,0.f,halfW*2.f,(float)H));
+        }
+
     g.setColour(gridCol);
     for(double f:{50.0,100.0,200.0,500.0,1000.0,2000.0,5000.0,10000.0})
         g.drawVerticalLine((int)freqToX(f),0.f,r.getBottom());
@@ -109,6 +125,12 @@ void EqCurveDisplay::paint(juce::Graphics& g)
     float n2F=apvts.getRawParameterValue("n2_freq")->load();
     float n2D=apvts.getRawParameterValue("n2_depth")->load();
     float n2Qv=apvts.getRawParameterValue("n2_q")->load();
+    float n3F=apvts.getRawParameterValue("n3_freq")->load();
+    float n3D=apvts.getRawParameterValue("n3_depth")->load();
+    float n3Qv=apvts.getRawParameterValue("n3_q")->load();
+    float n4F=apvts.getRawParameterValue("n4_freq")->load();
+    float n4D=apvts.getRawParameterValue("n4_depth")->load();
+    float n4Qv=apvts.getRawParameterValue("n4_q")->load();
 
     using C=juce::dsp::IIR::Coefficients<float>;
     auto c1=C::makeLowShelf(sr,lowF,0.55f,juce::Decibels::decibelsToGain(lfB*1.35f));
@@ -118,12 +140,15 @@ void EqCurveDisplay::paint(juce::Graphics& g)
         juce::Decibels::decibelsToGain(-hfA*1.6f));
     auto c5=C::makePeakFilter(sr,n1F,juce::jmax(1.f,n1Qv),juce::Decibels::decibelsToGain(n1D));
     auto c6=C::makePeakFilter(sr,n2F,juce::jmax(1.f,n2Qv),juce::Decibels::decibelsToGain(n2D));
+    auto c7=C::makePeakFilter(sr,n3F,juce::jmax(1.f,n3Qv),juce::Decibels::decibelsToGain(n3D));
+    auto c8=C::makePeakFilter(sr,n4F,juce::jmax(1.f,n4Qv),juce::Decibels::decibelsToGain(n4D));
     auto clo=C::makeHighPass(sr,juce::jlimit(10.f,50.f,lcF),0.7071f);   // LR4 = squared
 
     auto magDb=[&](double f){
         double m=c1->getMagnitudeForFrequency(f,sr)*c2->getMagnitudeForFrequency(f,sr)*
                  c3->getMagnitudeForFrequency(f,sr)*c4->getMagnitudeForFrequency(f,sr)*
-                 c5->getMagnitudeForFrequency(f,sr)*c6->getMagnitudeForFrequency(f,sr);
+                 c5->getMagnitudeForFrequency(f,sr)*c6->getMagnitudeForFrequency(f,sr)*
+                 c7->getMagnitudeForFrequency(f,sr)*c8->getMagnitudeForFrequency(f,sr);
         if(lcOn){ double h=clo->getMagnitudeForFrequency(f,sr); m*=h*h; }
         return (float)juce::Decibels::gainToDecibels(m,-60.0);};
 
@@ -146,10 +171,12 @@ void EqCurveDisplay::paint(juce::Graphics& g)
     hfNode={freqToX(hbF),dbToY(magDb(hbF))};
     n1Node={freqToX(n1F),dbToY(magDb(n1F))};
     n2Node={freqToX(n2F),dbToY(magDb(n2F))};
+    n3Node={freqToX(n3F),dbToY(magDb(n3F))};
+    n4Node={freqToX(n4F),dbToY(magDb(n4F))};
     for(auto p:{lfNode,hfNode}){
         g.setColour(dispCol); g.fillEllipse(p.x-6.f,p.y-6.f,12.f,12.f);
         g.setColour(accent);  g.drawEllipse(p.x-6.f,p.y-6.f,12.f,12.f,2.f);}
-    for(auto p:{n1Node,n2Node}){   // notches = squares
+    for(auto p:{n1Node,n2Node,n3Node,n4Node}){   // notches = squares
         g.setColour(dispCol); g.fillRect(p.x-5.f,p.y-5.f,10.f,10.f);
         g.setColour(accent.withRotatedHue(0.06f));
         g.drawRect(juce::Rectangle<float>(p.x-5.f,p.y-5.f,10.f,10.f),2.f);}
@@ -171,29 +198,36 @@ void EqCurveDisplay::paint(juce::Graphics& g)
     g.setColour(strokeC); g.drawRoundedRectangle(r,4.f,1.f);
 }
 
+// dragging: 1=lf 2=hf 3..6=notch1..4 7=lowcut
+static juce::String notchPrefix(int dragging){ return "n"+juce::String(dragging-2); }
+
 void EqCurveDisplay::mouseDown(const juce::MouseEvent& e)
 {
     dragging=0;
-    if(e.position.getDistanceFrom(n1Node)<12.f)dragging=3;
-    else if(e.position.getDistanceFrom(n2Node)<12.f)dragging=4;
-    else if(e.position.getDistanceFrom(lcNode)<11.f)dragging=5;
-    else if(e.position.getDistanceFrom(lfNode)<14.f)dragging=1;
-    else if(e.position.getDistanceFrom(hfNode)<14.f)dragging=2;
-    if(dragging==5){if(auto*p=apvts.getParameter("lc_on"))p->setValueNotifyingHost(1.f); // grabbing enables it
+    const juce::Point<float>* nn[4]={&n1Node,&n2Node,&n3Node,&n4Node};
+    for(int i=0;i<4&&!dragging;++i)
+        if(e.position.getDistanceFrom(*nn[i])<12.f)dragging=3+i;
+    if(!dragging)
+    {
+        if(e.position.getDistanceFrom(lcNode)<11.f)dragging=7;
+        else if(e.position.getDistanceFrom(lfNode)<14.f)dragging=1;
+        else if(e.position.getDistanceFrom(hfNode)<14.f)dragging=2;
+    }
+    if(dragging==7){if(auto*p=apvts.getParameter("lc_on"))p->setValueNotifyingHost(1.f); // grabbing enables it
                     if(auto*p=apvts.getParameter("lc_freq"))p->beginChangeGesture();}
     if(dragging==1) if(auto*p=apvts.getParameter("lf_boost"))p->beginChangeGesture();
     if(dragging==2){if(auto*p=apvts.getParameter("hf_boost"))p->beginChangeGesture();
                     if(auto*p=apvts.getParameter("hf_freq"))p->beginChangeGesture();}
-    if(dragging==3){if(auto*p=apvts.getParameter("n1_freq"))p->beginChangeGesture();
-                    if(auto*p=apvts.getParameter("n1_depth"))p->beginChangeGesture();}
-    if(dragging==4){if(auto*p=apvts.getParameter("n2_freq"))p->beginChangeGesture();
-                    if(auto*p=apvts.getParameter("n2_depth"))p->beginChangeGesture();}
+    if(dragging>=3&&dragging<=6){
+        const auto pre=notchPrefix(dragging);
+        if(auto*p=apvts.getParameter(pre+"_freq"))p->beginChangeGesture();
+        if(auto*p=apvts.getParameter(pre+"_depth"))p->beginChangeGesture();}
 }
 void EqCurveDisplay::mouseDrag(const juce::MouseEvent& e)
 {
     if(!dragging)return;
     float db=juce::jlimit(-20.f,20.f,(getHeight()*0.5f-e.position.y)*20.f/(getHeight()*0.5f));
-    if(dragging==5){
+    if(dragging==7){
         const float f=juce::jlimit(10.f,50.f,(float)xToFreq(e.position.x));
         auto range=apvts.getParameterRange("lc_freq");
         if(auto*p=apvts.getParameter("lc_freq"))p->setValueNotifyingHost(range.convertTo0to1(f));}
@@ -204,14 +238,14 @@ void EqCurveDisplay::mouseDrag(const juce::MouseEvent& e)
         for(int i=0;i<7;++i){double d=std::abs(std::log(f/kHB[i]));if(d<bd){bd=d;best=i;}}
         if(auto*p=apvts.getParameter("hf_freq"))p->setValueNotifyingHost((float)best/6.f);}
     else{
-        const bool one=dragging==3;
+        const auto pre=notchPrefix(dragging);
         const float fr=juce::jlimit(40.f,18000.f,(float)xToFreq(e.position.x));
         const float gain=juce::jlimit(-30.f,15.f,db*1.5f);  // drag up = boost (search), down = cut
-        auto rangeF=apvts.getParameterRange(one?"n1_freq":"n2_freq");
-        auto rangeG=apvts.getParameterRange(one?"n1_depth":"n2_depth");
-        if(auto*p=apvts.getParameter(one?"n1_freq":"n2_freq"))
+        auto rangeF=apvts.getParameterRange(pre+"_freq");
+        auto rangeG=apvts.getParameterRange(pre+"_depth");
+        if(auto*p=apvts.getParameter(pre+"_freq"))
             p->setValueNotifyingHost(rangeF.convertTo0to1(fr));
-        if(auto*p=apvts.getParameter(one?"n1_depth":"n2_depth"))
+        if(auto*p=apvts.getParameter(pre+"_depth"))
             p->setValueNotifyingHost(rangeG.convertTo0to1(gain));}
     repaint();
 }
@@ -220,11 +254,11 @@ void EqCurveDisplay::mouseUp(const juce::MouseEvent&)
     if(dragging==1) if(auto*p=apvts.getParameter("lf_boost"))p->endChangeGesture();
     if(dragging==2){if(auto*p=apvts.getParameter("hf_boost"))p->endChangeGesture();
                     if(auto*p=apvts.getParameter("hf_freq"))p->endChangeGesture();}
-    if(dragging==3){if(auto*p=apvts.getParameter("n1_freq"))p->endChangeGesture();
-                    if(auto*p=apvts.getParameter("n1_depth"))p->endChangeGesture();}
-    if(dragging==4){if(auto*p=apvts.getParameter("n2_freq"))p->endChangeGesture();
-                    if(auto*p=apvts.getParameter("n2_depth"))p->endChangeGesture();}
-    if(dragging==5) if(auto*p=apvts.getParameter("lc_freq"))p->endChangeGesture();
+    if(dragging>=3&&dragging<=6){
+        const auto pre=notchPrefix(dragging);
+        if(auto*p=apvts.getParameter(pre+"_freq"))p->endChangeGesture();
+        if(auto*p=apvts.getParameter(pre+"_depth"))p->endChangeGesture();}
+    if(dragging==7) if(auto*p=apvts.getParameter("lc_freq"))p->endChangeGesture();
     dragging=0;
 }
 

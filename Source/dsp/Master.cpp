@@ -112,6 +112,7 @@ void HertzMagicAudioProcessor::processFinal(juce::AudioBuffer<float>& buffer)
     auto* L=buffer.getWritePointer(0);
     auto* R=numCh>1?buffer.getWritePointer(1):nullptr;
     float maxGr=0.f;
+    double gmSumK=0.0;   // block sum of K-weighted MS — feeds the gain-match output loudness
     const int wsel=juce::jlimit(0,2,(int)apvts.getRawParameterValue("loud_win")->load());
 
     for(int i=0;i<n;++i)
@@ -141,6 +142,7 @@ void HertzMagicAudioProcessor::processFinal(juce::AudioBuffer<float>& buffer)
         const float kL=kHip[0].processSample(kShelf[0].processSample(oL));
         const float kR=kHip[1].processSample(kShelf[1].processSample(oR));
         const double msK=(double)kL*kL+(double)kR*kR;
+        gmSumK+=msK;
         const int i3=(loudPos-loudLen3+loudMax)%loudMax;
         const int i5=(loudPos-loudLen5+loudMax)%loudMax;
         rmsSum3+=msR-(double)loudRms[(size_t)i3]; rmsSum5+=msR-(double)loudRms[(size_t)i5]; rmsSum10+=msR-(double)loudRms[(size_t)loudPos];
@@ -152,6 +154,12 @@ void HertzMagicAudioProcessor::processFinal(juce::AudioBuffer<float>& buffer)
     }
 
     limGrDb.store(maxGr);
+    // ~400 ms K-weighted output loudness (channel-summed MS) for gain match
+    {
+        const float blockMsK=(float)(gmSumK/(double)juce::jmax(1,n));
+        const float aK=1.f-std::exp(-(float)n/(0.4f*sr));
+        gmOutLoudState+=aK*(blockMsK-gmOutLoudState);
+    }
     const double rsum=wsel==0?rmsSum3:wsel==1?rmsSum5:rmsSum10;
     const double ksum=wsel==0?kSum3 :wsel==1?kSum5 :kSum10;
     const int    llen=wsel==0?loudLen3:wsel==1?loudLen5:loudLen10;

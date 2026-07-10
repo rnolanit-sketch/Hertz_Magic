@@ -131,7 +131,8 @@ private:
     std::unique_ptr<juce::dsp::Oversampling<float>> clipOversampler;
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> laDelay { 8192 };
     float limEnv = 1.0f, limAvgGr = 0.0f;
-    juce::dsp::IIR::Filter<float> kShelf[2], kHip[2];   // K-weighting (BS.1770)
+    juce::dsp::IIR::Filter<float> kShelf[2], kHip[2];       // K-weighting (BS.1770), output meter
+    juce::dsp::IIR::Filter<float> kShelfIn[2], kHipIn[2];   // K-weighting, input reference (gain match)
     float inRmsState = 0.0f;
     // Sliding loudness windows: 3 / 5 / 10 s maintained together, one selected
     std::vector<float> loudRms, loudK;   // rings sized to the longest window
@@ -152,8 +153,12 @@ private:
     int latencySamples = 0;
 
     // ---- Gain match (loudness-compensated A/B) ----
+    // Trims the FINAL output (post clipper/limiter) down to the pre-processing input
+    // loudness using K-weighted (LUFS) mean-square. Attenuate-only, so the limiter's
+    // ceiling can never be breached.
     juce::SmoothedValue<float> gmGain;   // 1.0 = no compensation
-    float outRmsFastState = 0.0f;        // ~300 ms post-mix RMS, comparable to inRmsState
+    float gmInLoudState  = 0.0f;         // ~400 ms K-weighted, channel-summed MS of trimmed input
+    float gmOutLoudState = 0.0f;         // ~400 ms K-weighted, channel-summed MS of final output (pre-gm)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HertzMagicAudioProcessor)
 };

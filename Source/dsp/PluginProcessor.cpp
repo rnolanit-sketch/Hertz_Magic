@@ -77,7 +77,7 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     // Gain match: slow-ish ramp so the compensation doesn't audibly pump
     gmGain.reset(sampleRate,0.8);
     gmGain.setCurrentAndTargetValue(1.0f);
-    outRmsFastState=0.f;
+    gmInLoudState=0.f; gmOutLoudState=0.f;
 
     // Loudness: maintain 3/5/10 s windows together in one 10 s ring
     loudLen3 =juce::jmax(1,(int)std::lround(3.0 *sampleRate));
@@ -105,13 +105,16 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
         ssEnvDb[b]=-90.f; ssGrSm[b]=0.f; ssGrDb[b].store(0.f);
     }
 
-    // K-weighting (ITU-R BS.1770): pre-shelf + RLB high-pass
+    // K-weighting (ITU-R BS.1770): pre-shelf + RLB high-pass. Two independent filter
+    // banks share the same coeffs: one for the output meter, one for the gain-match
+    // input reference (they run over different signals, so cannot share state).
     for(int ch=0;ch<2;++ch){
-        *kShelf[ch].coefficients=*juce::dsp::IIR::Coefficients<float>::makeHighShelf(
+        auto shelf=juce::dsp::IIR::Coefficients<float>::makeHighShelf(
             sampleRate,1681.97,0.7071f,juce::Decibels::decibelsToGain(3.9998f));
-        *kHip[ch].coefficients=*juce::dsp::IIR::Coefficients<float>::makeHighPass(
-            sampleRate,38.13,0.5f);
-        kShelf[ch].reset(); kHip[ch].reset();
+        auto hip=juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate,38.13,0.5f);
+        *kShelf[ch].coefficients=*shelf;   *kHip[ch].coefficients=*hip;
+        *kShelfIn[ch].coefficients=*shelf; *kHipIn[ch].coefficients=*hip;
+        kShelf[ch].reset(); kHip[ch].reset(); kShelfIn[ch].reset(); kHipIn[ch].reset();
     }
 
     const int satLat=(int)std::lround(oversampler->getLatencyInSamples());
@@ -170,6 +173,18 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
         inRmsState+=a*(blockMs-inRmsState);
         inRmsDb.store(10.f*std::log10(inRmsState+1.0e-10f));
     }
+    // ~400 ms K-weighted (LUFS) loudness of the trimmed input — the gain-match
+    // reference. Channel-summed mean-square, matched to the output measure below.
+    {
+        double sumK=0.0;
+        for(int ch=0;ch<numCh;++ch){
+            auto* s=buffer.getReadPointer(ch);
+            for(int i=0;i<n;++i){ const float k=kHipIn[ch].processSample(kShelfIn[ch].processSample(s[i])); sumK+=(double)k*k; }
+        }
+        const float blockMsK=(float)(sumK/(double)juce::jmax(1,n));
+        const float aK=1.f-std::exp(-(float)n/(0.4f*(float)currentSampleRate));
+        gmInLoudState+=aK*(blockMsK-gmInLoudState);
+    }
 
     dryBuffer.setSize(numCh,n,false,false,true);
     deltaBuffer.setSize(numCh,n,false,false,true);
@@ -211,36 +226,33 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
         }
     }
 
-    float sumSqOut=0.f;
     for(int i=0;i<n;++i){
         float g=outGain.getNextValue(),m=mixSmooth.getNextValue();
         for(int ch=0;ch<numCh;++ch){
             auto& w=buffer.getWritePointer(ch)[i];
             w=(w*g*m)+(dryBuffer.getReadPointer(ch)[i]*(1.f-m));
-            sumSqOut+=w*w;
         }
     }
 
-    // ---- Gain match: continuously trims output to the pre-processing input
-    // loudness so flipping it hears the processing at matched level (fair A/B
-    // against the DAW's own bypass). Runs before the limiter so it still
-    // protects the final ceiling either way. ----
+    // ---- Fixed final stage: clipper -> limiter (always last) ----
+    // processFinal also updates gmOutLoudState (K-weighted loudness of its output).
+    processFinal(buffer);
+
+    // ---- Gain match (AFTER the final stage): trim the true output down to the
+    // pre-processing input loudness so flipping it gives a level-fair A/B. Matches
+    // on K-weighted (LUFS) loudness and is attenuate-only, so the processed signal
+    // (louder once limited) is only ever pulled DOWN — the ceiling stays safe. ----
     {
-        const float blockMsOut=sumSqOut/(float)juce::jmax(1,n*numCh);
-        const float a=1.f-std::exp(-(float)n/(0.3f*(float)currentSampleRate));
-        outRmsFastState+=a*(blockMsOut-outRmsFastState);
-        const float outRmsFastDb=10.f*std::log10(outRmsFastState+1.0e-10f);
         const bool gmOn=apvts.getRawParameterValue(IDs::gmOn)->load()>0.5f;
-        const float trimDb=juce::jlimit(-24.f,24.f,inRmsDb.load()-outRmsFastDb);
+        const float inLoud =10.f*std::log10(gmInLoudState +1.0e-12f);
+        const float outLoud=10.f*std::log10(gmOutLoudState+1.0e-12f);
+        const float trimDb=juce::jlimit(-24.f,0.f,inLoud-outLoud);   // attenuate only
         gmGain.setTargetValue(gmOn?juce::Decibels::decibelsToGain(trimDb):1.0f);
     }
     for(int i=0;i<n;++i){
         const float gm=gmGain.getNextValue();
         for(int ch=0;ch<numCh;++ch) buffer.getWritePointer(ch)[i]*=gm;
     }
-
-    // ---- Fixed final stage: clipper -> limiter (always last) ----
-    processFinal(buffer);
 
     // ---- Delta monitor: hear processed minus dry (latency-aligned) ----
     if(apvts.getRawParameterValue("delta_on")->load()>0.5f

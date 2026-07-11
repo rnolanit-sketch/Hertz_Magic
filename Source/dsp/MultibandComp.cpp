@@ -35,6 +35,8 @@ void HertzMagicAudioProcessor::processMultibandComp(juce::AudioBuffer<float>& bu
     const int numCh=buf.getNumChannels(), n=buf.getNumSamples();
     updateCrossoverCoeffs(currentSampleRate);
     for(int i=0;i<3;++i) bandBuf[i].setSize(numCh,n,false,false,true);
+    mbDryBuf.setSize(numCh,n,false,false,true);
+    for(int ch=0;ch<numCh;++ch) mbDryBuf.copyFrom(ch,0,buf,ch,0,n);
 
     for(int ch=0;ch<numCh&&ch<2;++ch)
     {
@@ -99,6 +101,16 @@ void HertzMagicAudioProcessor::processMultibandComp(juce::AudioBuffer<float>& bu
     for(int b=0;b<3;++b)
         for(int ch=0;ch<numCh;++ch)
             buf.addFrom(ch,0,bandBuf[b],ch,0,n);
+
+    // Parallel dry/wet blend, scoped to this module only (Drawmer-style parallel comp).
+    mbMixSmooth.setTargetValue(apvts.getRawParameterValue(IDs::mbMix)->load()/100.f);
+    for(int i=0;i<n;++i){
+        const float m=mbMixSmooth.getNextValue();
+        for(int ch=0;ch<numCh;++ch){
+            auto& w=buf.getWritePointer(ch)[i];
+            w=w*m+mbDryBuf.getReadPointer(ch)[i]*(1.f-m);
+        }
+    }
 }
 
 //==============================================================================

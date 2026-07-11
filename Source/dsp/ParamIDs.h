@@ -13,6 +13,7 @@
 namespace IDs
 {
     static const juce::String inTrim="in_trim", outTrim="out_trim", mix="mix";
+    static const juce::String mbMix="mb_mix";   // Multiband Comp parallel dry/wet blend
     static const juce::String eqOn="eq_on", lfBoost="lf_boost", lfAtten="lf_atten",
         lfFreq="lf_freq", hfBoost="hf_boost", hfBw="hf_bw", hfFreq="hf_freq",
         hfAtten="hf_atten", hfAttenSel="hf_atten_sel";

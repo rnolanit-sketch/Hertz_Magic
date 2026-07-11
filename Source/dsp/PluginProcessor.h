@@ -109,6 +109,8 @@ private:
     void updateCrossoverCoeffs (double sr);
     void processMultibandComp (juce::AudioBuffer<float>&);
     juce::AudioBuffer<float> bandBuf[3];
+    juce::AudioBuffer<float> mbDryBuf;          // pre-comp copy for the mb_mix parallel blend
+    juce::SmoothedValue<float> mbMixSmooth;
     float xo1 = 200.0f, xo2 = 4000.0f;
 
     // ---- Saturation (tape -> valve, 4x oversampled) ----
@@ -148,9 +150,7 @@ private:
 
     // ---- Master ----
     double currentSampleRate = 44100.0;
-    juce::SmoothedValue<float> inGain, outGain, mixSmooth;
-    juce::AudioBuffer<float> dryBuffer;
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> dryDelay { 8192 };
+    juce::SmoothedValue<float> inGain, outGain;
     int latencySamples = 0;
 
     // ---- Gain match (loudness-compensated A/B) ----

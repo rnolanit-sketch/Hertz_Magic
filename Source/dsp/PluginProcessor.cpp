@@ -125,13 +125,6 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
                  +lookaheadSamples;
     setLatencySamples(latencySamples);
 
-    // Mix dry path aligns to the pre-final mix point (saturation latency only)
-    dryDelay.prepare(spec);
-    dryDelay.setMaximumDelayInSamples(juce::jmax(1,satLat+8));
-    dryDelay.setDelay((float)satLat);
-    dryDelay.reset();
-    dryBuffer.setSize(numCh,samplesPerBlock);
-
     // Delta dry path aligns to the plugin output (full latency). Sized for the
     // 16x worst case so runtime oversampling changes never reallocate.
     deltaDelay.prepare(spec);
@@ -147,7 +140,7 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     sideLPzOut[0]=sideLPzOut[1]=0.f;
     valveLPz[0]=valveLPz[1]=0.f;
 
-    for(auto* s:{&inGain,&outGain,&mixSmooth}) s->reset(sampleRate,0.05);
+    for(auto* s:{&inGain,&outGain,&mbMixSmooth}) s->reset(sampleRate,0.05);
 }
 
 //==============================================================================
@@ -159,7 +152,6 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
 
     inGain.setTargetValue(juce::Decibels::decibelsToGain(apvts.getRawParameterValue(IDs::inTrim)->load()));
     outGain.setTargetValue(juce::Decibels::decibelsToGain(apvts.getRawParameterValue(IDs::outTrim)->load()));
-    mixSmooth.setTargetValue(apvts.getRawParameterValue(IDs::mix)->load()/100.f);
 
     float peakIn=0.f, sumSqIn=0.f;
     for(int i=0;i<n;++i){
@@ -187,16 +179,11 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
         gmInLoudState+=aK*(blockMsK-gmInLoudState);
     }
 
-    dryBuffer.setSize(numCh,n,false,false,true);
     deltaBuffer.setSize(numCh,n,false,false,true);
     for(int ch=0;ch<numCh;++ch){
         auto* src=buffer.getReadPointer(ch);
-        auto* dst=dryBuffer.getWritePointer(ch);
         auto* dd=deltaBuffer.getWritePointer(ch);
-        for(int i=0;i<n;++i){
-            dryDelay.pushSample(ch,src[i]);   dst[i]=dryDelay.popSample(ch);
-            deltaDelay.pushSample(ch,src[i]); dd[i]=deltaDelay.popSample(ch);
-        }
+        for(int i=0;i<n;++i){ deltaDelay.pushSample(ch,src[i]); dd[i]=deltaDelay.popSample(ch); }
     }
 
     for(int slot=0;slot<kNumModules;++slot)
@@ -229,11 +216,8 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
     }
 
     for(int i=0;i<n;++i){
-        float g=outGain.getNextValue(),m=mixSmooth.getNextValue();
-        for(int ch=0;ch<numCh;++ch){
-            auto& w=buffer.getWritePointer(ch)[i];
-            w=(w*g*m)+(dryBuffer.getReadPointer(ch)[i]*(1.f-m));
-        }
+        const float g=outGain.getNextValue();
+        for(int ch=0;ch<numCh;++ch) buffer.getWritePointer(ch)[i]*=g;
     }
 
     // ---- Fixed final stage: clipper -> limiter (always last) ----

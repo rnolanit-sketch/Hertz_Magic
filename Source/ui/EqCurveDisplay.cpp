@@ -117,6 +117,26 @@ void EqCurveDisplay::paint(juce::Graphics& g)
     bool  lcOn=apvts.getRawParameterValue("lc_on")->load()>0.5f;
 
     float lowF=kLF[juce::jlimit(0,3,lfF)];
+
+    // ---- Low-end flag (blue) — anchored at the Low Freq node, driven directly
+    // by EQ param state (lf_boost / lc_on), not a DSP detector ----
+    if(lowFlagOn)
+    {
+        const float boostA=juce::jmap(juce::jlimit(0.f,10.f,lfB),0.f,10.f,0.f,0.4f);
+        const float cutA=lcOn?0.28f:0.f;
+        const float a=juce::jmax(boostA,cutA);
+        if(a>0.02f)
+        {
+            const float x=freqToX(lowF);
+            const float halfW=juce::jmax(20.f,
+                (freqToX(lowF*2.0)-freqToX(lowF*0.5))*0.5f);
+            juce::ColourGradient glow(AlertColours::lowEnd.withAlpha(a),x,(float)H*0.5f,
+                AlertColours::lowEnd.withAlpha(0.f),x+halfW,(float)H*0.5f,true);
+            g.setGradientFill(glow);
+            g.fillRect(juce::Rectangle<float>(x-halfW,0.f,halfW*2.f,(float)H));
+        }
+    }
+
     float hbF=kHB[juce::jlimit(0,6,hfF)];
     float qs=juce::jmap(hfW,0.f,10.f,1.0f,0.4f);
     float n1F=apvts.getRawParameterValue("n1_freq")->load();

@@ -86,6 +86,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
         juce::NormalisableRange<float>(1.f,40.f,0.1f,0.5f),10.f));
 
     layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::compOn,1},"Comp In",true));
+    layout.add(std::make_unique<P>(juce::ParameterID{IDs::mbMix,1},"Multiband Mix",
+        juce::NormalisableRange<float>(0.f,100.f,0.1f),100.f,
+        juce::AudioParameterFloatAttributes().withLabel("%")));
     layout.add(std::make_unique<P>(juce::ParameterID{IDs::xover1,1},"XO1",
         juce::NormalisableRange<float>(60.f,800.f,1.f,0.4f),200.f,
         juce::AudioParameterFloatAttributes().withLabel("Hz")));

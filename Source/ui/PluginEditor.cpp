@@ -58,6 +58,16 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     anDetailBtn.onClick=[this]{ analyzerDetail=(analyzerDetail+1)%3; };
     eqModule.addAndMakeVisible(anDetailBtn);
 
+    lowFlagBtn.setButtonText("LOW");
+    lowFlagBtn.setClickingTogglesState(true);
+    lowFlagBtn.setToggleState(true,juce::dontSendNotification);
+    lowFlagBtn.setColour(juce::TextButton::buttonColourId,juce::Colours::transparentBlack);
+    lowFlagBtn.setColour(juce::TextButton::buttonOnColourId,AlertColours::lowEnd.withAlpha(0.22f));
+    lowFlagBtn.setColour(juce::TextButton::textColourOffId,AlertColours::lowEnd.withAlpha(0.5f));
+    lowFlagBtn.setColour(juce::TextButton::textColourOnId,AlertColours::lowEnd);
+    lowFlagBtn.onClick=[this]{ eqCurve.setShowLowFlag(lowFlagBtn.getToggleState()); };
+    eqModule.addAndMakeVisible(lowFlagBtn);
+
     // Genre reference-curve toggles — visual target only, own fixed colours
     auto setupRefBtn=[this](juce::TextButton& b,const juce::String& text,juce::Colour c){
         b.setButtonText(text); b.setClickingTogglesState(true);
@@ -77,6 +87,7 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     compModule.moduleIndex=1; addAndMakeVisible(compModule); compModule.addAndMakeVisible(mbGR);
     compModule.initHeader("MULTIBAND COMP",true);
     setupToggle(compOnBtn,compOnAt,"comp_on","IN",&compModule);
+    setupSlider(mbMix,"mb_mix","MIX",&compModule);
     const char* kn[]={"THRESH","RATIO","ATK","REL","MKUP"};
     for(int b=0;b<3;++b){
         juce::String bs(b);
@@ -113,6 +124,7 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     setupToggle(satMsBtn,satMsAt,"sat_ms","M/S",&satModule);
     satMsBtn.onClick=[this]{ layoutModules(); repaint(); };
     setupToggle(satSwapBtn,satSwapAt,"sat_swap","SWAP",&satModule);
+    satSwapBtn.onClick=[this]{ layoutModules(); repaint(); };
     satModule.addAndMakeVisible(tapeMeter);
     satModule.addAndMakeVisible(valveMeter);
 
@@ -141,7 +153,6 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     addAndMakeVisible(inMeter); addAndMakeVisible(outMeter);
     setupKnob(inTrim,"in_trim","INPUT",this);
     inTrim.s.setTextBoxStyle(juce::Slider::TextBoxBelow,false,62,16);   // narrow rail
-    setupSlider(mix,"mix","MIX",this);
     setupSlider(outTrim,"out_trim","OUTPUT",this);
     outTrim.s.setDetent(0.0);                       // soft catch at 0 dB
     outTrim.s.setDoubleClickReturnValue(true,0.0);  // double-click → 0 dB
@@ -282,6 +293,8 @@ void HertzMagicAudioProcessorEditor::layoutModules()
             anlBtn.setBounds(hdr.removeFromRight(50).withHeight(17));
             hdr.removeFromRight(4);
             anDetailBtn.setBounds(hdr.removeFromRight(54).withHeight(17));
+            hdr.removeFromRight(6);
+            lowFlagBtn.setBounds(hdr.removeFromRight(40).withHeight(17));
             hdr.removeFromRight(10);
             edmBtn.setBounds(hdr.removeFromRight(36).withHeight(17));
             hdr.removeFromRight(3);
@@ -314,7 +327,15 @@ void HertzMagicAudioProcessorEditor::layoutModules()
         }
         else if(mi==1) // Comp
         {
-            compOnBtn.setBounds(m->getLocalBounds().reduced(10,4).removeFromTop(20).removeFromRight(40).withHeight(17));
+            // Header controls come from the already-stripped inner area (below the
+            // panel's own title/"DRAG" hint row) so they never overlap that text —
+            // same approach as the Saturation module's tape/valve headers.
+            auto hdr=inner.removeFromTop(20);
+            compOnBtn.setBounds(hdr.removeFromRight(40).withHeight(17));
+            hdr.removeFromRight(6);
+            mbMix.l.setBounds(hdr.removeFromLeft(30).withHeight(17));
+            mbMix.s.setBounds(hdr.withHeight(17));
+            inner.removeFromTop(4);
             mbGR.setBounds(inner.removeFromTop(88));
             inner.removeFromTop(8);
             int bw=inner.getWidth()/3;
@@ -334,11 +355,15 @@ void HertzMagicAudioProcessorEditor::layoutModules()
                 layoutKnob(bandKnobs[b][3],q2.reduced(1));
                 layoutKnob(bandKnobs[b][4],q3.reduced(1));}
         }
-        else // Saturation: TAPE | VALVE columns, with M/S toggle
+        else // Saturation: columns follow signal order (sat_swap flips them)
         {
             auto half=inner;
-            auto tapeCol=half.removeFromLeft(inner.getWidth()/2).reduced(3,0);
-            auto valveCol=half.reduced(3,0);
+            auto leftCol=half.removeFromLeft(inner.getWidth()/2).reduced(3,0);
+            auto rightCol=half.reduced(3,0);
+            const bool swp=processor.apvts.getRawParameterValue("sat_swap")->load()>0.5f;
+            // swp: Valve runs first (left), Tape second (right)
+            auto& tapeCol =swp?rightCol:leftCol;
+            auto& valveCol=swp?leftCol:rightCol;
 
             // Header: IN toggles + SWAP (order) + M/S, stage captions between
             auto tapeHdr=tapeCol.removeFromTop(18);
@@ -846,11 +871,9 @@ void HertzMagicAudioProcessorEditor::resized()
         auto a=masterPanel.reduced(14,6); a.removeFromTop(15);
         loudBox=a.removeFromRight(220);
         a.removeFromRight(16);
-        int cw=a.getWidth()/2;
-        for(auto* k:{&mix,&outTrim}){
-            auto col=a.removeFromLeft(cw).reduced(8,0);
-            k->l.setBounds(col.removeFromTop(12));
-            k->s.setBounds(col);}
+        auto outCol=a.withSizeKeepingCentre(a.getWidth()/2,a.getHeight()).reduced(8,0);
+        outTrim.l.setBounds(outCol.removeFromTop(12));
+        outTrim.s.setBounds(outCol);
         // Loudness cluster: header row (with the 3/5/10 s selector), then values
         auto lb=loudBox.reduced(8,4);
         auto hdrRow=lb.removeFromTop(15);

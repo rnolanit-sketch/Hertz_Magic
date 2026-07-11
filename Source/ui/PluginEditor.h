@@ -134,6 +134,9 @@ public:
         harshCount=juce::jmin(count,6); harshOn=enabled;
         for(int i=0;i<harshCount;++i){ harshFreq[i]=freqs[i]; harshGr[i]=grDb[i]; }
     }
+    /** Low-end flag: driven directly by EQ param state (lf_boost/lf_freq/lc_on),
+        not a DSP detector — gated by a toggle on the EQ module header. */
+    void setShowLowFlag(bool s){ lowFlagOn=s; repaint(); }
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
@@ -153,6 +156,7 @@ private:
     float harshFreq[6]{}, harshGr[6]{};
     int  harshCount=0;
     bool harshOn=false;
+    bool lowFlagOn=true;
     juce::Point<float> lfNode,hfNode,n1Node,n2Node,n3Node,n4Node,lcNode;
     int dragging=0;   // 1=lf 2=hf 3..6=notch1..4 7=lowcut
 };
@@ -168,7 +172,8 @@ namespace RefCurveColours
 // Fixed alert colours (stable across skins, like RefCurveColours)
 namespace AlertColours
 {
-    const juce::Colour harsh { 0xffff4438 };  // "problem area" warning red
+    const juce::Colour harsh   { 0xffff4438 };  // "problem area" warning red
+    const juce::Colour lowEnd  { 0xff4fa8ff };  // low-end EQ decision glow, blue
 }
 
 //==============================================================================
@@ -389,6 +394,7 @@ public:
     {
         if(e.y>26) return;
         dragging=true;
+        toFront(true);
         dragStart=e.getScreenPosition()-getScreenPosition();
         repaint();
     }
@@ -454,6 +460,7 @@ private:
     int  eqSepX1=0,eqSepX2=0;        // knob-group separators (panel-local x)
     juce::ToggleButton eqOnBtn,lcOnBtn,anlBtn;
     juce::TextButton anDetailBtn;    // cycles analyser resolution
+    juce::TextButton lowFlagBtn;     // blue "low-end decision" glow on the EQ curve
     std::unique_ptr<ButtonAt> eqOnAt,lcOnAt;
     bool showAnalyzer=true;
     int  analyzerDetail=1;           // 0=low 1=med 2=high
@@ -472,6 +479,7 @@ private:
     // Comp
     MultibandGRDisplay mbGR;
     Knob bandKnobs[3][5];
+    Knob mbMix;   // parallel dry/wet blend, scoped to this module
     juce::ToggleButton compOnBtn,bandSoloBtn[3],bandBypBtn[3];
     std::unique_ptr<ButtonAt> compOnAt,bandSoloAt[3],bandBypAt[3];
     juce::Label bandGRLabel[3];
@@ -505,7 +513,7 @@ private:
     // Meters + master
     IdealInputMeter inMeter;
     MasteringMeter outMeter;
-    Knob inTrim,outTrim,mix;
+    Knob inTrim,outTrim;
 
     juce::Rectangle<int> headerArea,eqRow,moduleRow,masterPanel,meterLeft,meterRight,
                          finalPanel,spectralPanel,loudBox;

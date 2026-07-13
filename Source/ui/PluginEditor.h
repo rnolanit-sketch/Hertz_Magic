@@ -341,6 +341,30 @@ private:
 };
 
 //==============================================================================
+/** Header preset strip: combo of user presets (plus a built-in "Default"
+    factory entry), SAVE (name prompt) and DEL. Presets are single XML files
+    in a per-user folder, so a "preset pack" is just a shareable folder. */
+class PresetBar : public juce::Component
+{
+public:
+    explicit PresetBar(HertzMagicAudioProcessor&);
+    void resized() override;
+    void setColours(juce::Colour accent,juce::Colour text,juce::Colour dim);
+    void refreshList();                 // rescan the preset folder
+    std::function<void()> onStateReloaded;   // editor relayouts after a load
+    static juce::File presetDir();
+private:
+    void loadSelected();
+    void savePreset();
+    void deletePreset();
+    HertzMagicAudioProcessor& proc;
+    juce::ComboBox box;
+    juce::TextButton saveBtn{"SAVE"},delBtn{"DEL"};
+    juce::StringArray names;            // combo order -> preset file basenames
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PresetBar)
+};
+
+//==============================================================================
 class ModulePanel : public juce::Component
 {
 public:
@@ -454,6 +478,7 @@ private:
     float smoothedHeat=0.f;
     Skin currentSkin=Skin::Digital;
     juce::TextButton skinToggleBtn;   // flicks between skins
+    PresetBar presetBar{processor};   // header preset strip (save/load/delete)
 
     ModulePanel eqModule,compModule,satModule;
     std::array<ModulePanel*,3> modules{&eqModule,&compModule,&satModule};

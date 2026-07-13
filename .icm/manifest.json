@@ -2,12 +2,12 @@
   "version": 2,
   "layers": 3,
   "root_nav": "CLAUDE.md",
-  "synced": "2026-07-09",
+  "synced": "2026-07-13",
   "_root_structure": "204154c4ae384900",
   "workspaces": {
     "dsp": {
       "path": "Source/dsp",
-      "fingerprint": "a1bbae523a8a9666",
+      "fingerprint": "bf25c840d3d88e6d",
       "files": [
         "Source/dsp/Eq.cpp",
         "Source/dsp/Master.cpp",
@@ -22,7 +22,7 @@
     },
     "ui": {
       "path": "Source/ui",
-      "fingerprint": "386e31a882c845a2",
+      "fingerprint": "ef2d78771f645db8",
       "files": [
         "Source/ui/EqCurveDisplay.cpp",
         "Source/ui/LookAndFeel.cpp",
@@ -30,6 +30,7 @@
         "Source/ui/MultibandGRDisplay.cpp",
         "Source/ui/PluginEditor.cpp",
         "Source/ui/PluginEditor.h",
+        "Source/ui/PresetBar.cpp",
         "Source/ui/SaturationDisplays.cpp",
         "Source/ui/SpectralTameDisplay.cpp"
       ]

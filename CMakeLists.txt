@@ -50,7 +50,8 @@ target_sources(HertzMagic PRIVATE
     Source/ui/MultibandGRDisplay.cpp
     Source/ui/SaturationDisplays.cpp
     Source/ui/Meters.cpp
-    Source/ui/SpectralTameDisplay.cpp)
+    Source/ui/SpectralTameDisplay.cpp
+    Source/ui/PresetBar.cpp)
 
 # So bare #include "PluginProcessor.h" / "PluginEditor.h" resolve from either workspace
 target_include_directories(HertzMagic PRIVATE Source/dsp Source/ui)

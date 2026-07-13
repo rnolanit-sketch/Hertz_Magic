@@ -19,6 +19,11 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     };
     addAndMakeVisible(skinToggleBtn);
 
+    // Preset strip in the header; loading a preset can change chain order and
+    // M/S state, so relayout the module panels afterwards
+    presetBar.onStateReloaded=[this]{ layoutModules(); repaint(); };
+    addAndMakeVisible(presetBar);
+
     eqModule.moduleIndex=0; addAndMakeVisible(eqModule); eqModule.addAndMakeVisible(eqCurve);
     eqModule.initHeader("HERTZTEQ EQ",false);   // header full of toggles — no drag hint
     // Knob-group separators, drawn by the panel itself (moves with a drag)
@@ -514,6 +519,8 @@ void HertzMagicAudioProcessorEditor::timerCallback()
     loudWinBtn.setButtonText(wn[juce::jlimit(0,2,(int)processor.apvts.getRawParameterValue("loud_win")->load())]);
     loudWinBtn.setColour(juce::TextButton::textColourOffId,acc);
 
+    presetBar.setColours(acc,lnf.textBrightCol(),lnf.textDimCol());
+
     // EQ display scope follows the persisted processor flag (session load safe)
     {
         const bool r12=processor.eqRange12.load();
@@ -835,6 +842,7 @@ void HertzMagicAudioProcessorEditor::resized()
     auto r=getLocalBounds();
     headerArea=r.removeFromTop(52);
     skinToggleBtn.setBounds(headerArea.withTrimmedRight(8).removeFromRight(82).withSizeKeepingCentre(80,22));
+    presetBar.setBounds(headerArea.withSizeKeepingCentre(360,24));
     r.removeFromBottom(14);
 
     meterLeft=r.removeFromLeft(kInRailW).reduced(0,4);

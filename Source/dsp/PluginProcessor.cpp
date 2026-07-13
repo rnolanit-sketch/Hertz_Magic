@@ -311,27 +311,34 @@ void HertzMagicAudioProcessor::copyScope(float* dst,int num) const
 }
 
 //==============================================================================
-void HertzMagicAudioProcessor::getStateInformation(juce::MemoryBlock& dest)
+std::unique_ptr<juce::XmlElement> HertzMagicAudioProcessor::stateToXml()
 {
     auto xml=apvts.copyState().createXml();
     juce::String ord;
     for(int i=0;i<kNumModules;++i) ord+=(i?",":"")+juce::String(chainOrder[(size_t)i]);
     xml->setAttribute("chainOrder",ord);
     xml->setAttribute("eqRange12",eqRange12.load());
-    copyXmlToBinary(*xml,dest);
+    return xml;
+}
+
+void HertzMagicAudioProcessor::stateFromXml(const juce::XmlElement& xml)
+{
+    auto toks=juce::StringArray::fromTokens(xml.getStringAttribute("chainOrder","0,1,2"),",","");
+    for(int i=0;i<kNumModules&&i<toks.size();++i)
+        chainOrder[(size_t)i]=juce::jlimit(0,2,toks[i].getIntValue());
+    eqRange12.store(xml.getBoolAttribute("eqRange12",false));
+    if(xml.hasTagName(apvts.state.getType()))
+        apvts.replaceState(juce::ValueTree::fromXml(xml));
+}
+
+void HertzMagicAudioProcessor::getStateInformation(juce::MemoryBlock& dest)
+{
+    copyXmlToBinary(*stateToXml(),dest);
 }
 
 void HertzMagicAudioProcessor::setStateInformation(const void* data,int size)
 {
-    if(auto xml=getXmlFromBinary(data,size))
-    {
-        auto toks=juce::StringArray::fromTokens(xml->getStringAttribute("chainOrder","0,1,2"),",","");
-        for(int i=0;i<kNumModules&&i<toks.size();++i)
-            chainOrder[(size_t)i]=juce::jlimit(0,2,toks[i].getIntValue());
-        eqRange12.store(xml->getBoolAttribute("eqRange12",false));
-        if(xml->hasTagName(apvts.state.getType()))
-            apvts.replaceState(juce::ValueTree::fromXml(*xml));
-    }
+    if(auto xml=getXmlFromBinary(data,size)) stateFromXml(*xml);
 }
 
 juce::AudioProcessorEditor* HertzMagicAudioProcessor::createEditor()

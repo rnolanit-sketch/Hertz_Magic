@@ -22,6 +22,8 @@ its own `.cpp`. Never hardcode a colour — route through `HertzLookAndFeel::acc
 - `SaturationDisplays.cpp` — `TapeDisplay`, `ValveDisplay`, `DriveMeter`.
 - `Meters.cpp` — `IdealInputMeter`, `MasteringMeter`, `LevelMeter`.
 - `SpectralTameDisplay.cpp` — draggable/toggleable spectral-tame bands.
+- `PresetBar.cpp` — header preset strip: save/load/delete `.hmpreset` XML files
+  (per-user folder; a "pack" is that folder shared), plus factory Default reset.
 - Skin colours live in `HertzColours`/`VintageColours`/`SpaceColours` in `PluginEditor.h`.
 
 ## Conventions & gotchas

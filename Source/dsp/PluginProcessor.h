@@ -43,6 +43,11 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
+    // Full plugin state as XML (params + chainOrder + eqRange12) — the same
+    // payload session save/load uses; also the preset file format.
+    std::unique_ptr<juce::XmlElement> stateToXml();
+    void stateFromXml (const juce::XmlElement&);
+
     //==========================================================================
     juce::AudioProcessorValueTreeState apvts;
 

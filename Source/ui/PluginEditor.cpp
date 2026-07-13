@@ -137,6 +137,7 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     setupKnob(valveDriveMid, "valve_drive_mid", "MID DRIVE",&satModule);
     setupKnob(valveDriveSide,"valve_drive_side","SIDE DRIVE",&satModule);
     setupKnob(sideLPFreq,"side_lp_freq","SIDE LP",&satModule);
+    setupKnob(sideHPFreq,"side_hp_freq","SIDE HP",&satModule);
     setupToggle(tapeOnBtn,tapeOnAt,"tape_on","IN",&satModule);
     setupToggle(valveOnBtn,valveOnAt,"valve_on","IN",&satModule);
     setupToggle(satMsBtn,satMsAt,"sat_ms","M/S",&satModule);
@@ -211,6 +212,14 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     addAndMakeVisible(loudWinBtn);
     setupToggle(gmOnBtn,gmOnAt,"gm_on","GM",this);
     setupToggle(abBtn,abAt,"ab_dry","A/B",this);
+    // Engaging A/B also lights GM: the trim must persist on the processed side
+    // AFTER flipping back, or the compare is only matched in one direction.
+    // GM stays on (visibly) until the user turns it off.
+    abBtn.onClick=[this]{
+        if(abBtn.getToggleState())
+            if(auto* p=processor.apvts.getParameter("gm_on"))
+                p->setValueNotifyingHost(1.f);
+    };
 
     for(auto* m:modules)
         m->onDragEnd=[this](ModulePanel* d,juce::Point<int> pos){onModuleDrop(d,pos);};
@@ -425,7 +434,8 @@ void HertzMagicAudioProcessorEditor::layoutModules()
                 layoutKnob(tapeChar,  tapeCol.reduced(4,0));
                 layoutKnob(valveDrive,valveCol.removeFromTop(valveCol.getHeight()/2).reduced(4,0));
                 layoutKnob(valveLP,   valveCol.reduced(4,0));
-                for(auto* k:{&tapeDriveMid,&tapeDriveSide,&valveDriveMid,&valveDriveSide,&sideLPFreq})
+                for(auto* k:{&tapeDriveMid,&tapeDriveSide,&valveDriveMid,&valveDriveSide,
+                             &sideLPFreq,&sideHPFreq})
                     { k->s.setBounds({}); k->l.setBounds({}); }
             }
             else
@@ -437,10 +447,13 @@ void HertzMagicAudioProcessorEditor::layoutModules()
                 layoutKnob(tapeDriveSide, tapeCol.removeFromTop(kh).reduced(4,0));
                 layoutKnob(valveDriveMid,  valveCol.removeFromTop(kh).reduced(4,0));
                 layoutKnob(valveDriveSide, valveCol.removeFromTop(kh).reduced(4,0));
-                // Side LP knob centred at the bottom, spanning both columns
-                // (union, not withRight — tape may be the right column when swapped)
+                // Side LP + HP knobs side by side at the bottom, spanning both
+                // columns (union, not withRight — tape may be the right column
+                // when swapped)
                 auto lpArea=tapeCol.getUnion(valveCol).reduced(4,0);
-                layoutKnob(sideLPFreq, lpArea.reduced(int(lpArea.getWidth()*0.15f),0));
+                auto hpArea=lpArea.removeFromRight(lpArea.getWidth()/2);
+                layoutKnob(sideLPFreq, lpArea.reduced(8,0));
+                layoutKnob(sideHPFreq, hpArea.reduced(8,0));
                 for(auto* k:{&tapeDrive,&tapeChar,&valveDrive,&valveLP})
                     { k->s.setBounds({}); k->l.setBounds({}); }
             }

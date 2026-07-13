@@ -542,7 +542,7 @@ private:
     TapeDisplay tape;
     ValveDisplay valve;
     Knob tapeDrive,tapeChar,valveDrive,valveLP;
-    Knob tapeDriveMid,tapeDriveSide,valveDriveMid,valveDriveSide,sideLPFreq;
+    Knob tapeDriveMid,tapeDriveSide,valveDriveMid,valveDriveSide,sideLPFreq,sideHPFreq;
     juce::ToggleButton tapeOnBtn,valveOnBtn,satMsBtn,satSwapBtn;
     std::unique_ptr<ButtonAt> tapeOnAt,valveOnAt,satMsAt,satSwapAt;
     DriveMeter tapeMeter{"TAPE"},valveMeter{"VALVE"};

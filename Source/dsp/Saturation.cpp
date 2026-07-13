@@ -16,6 +16,9 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
     const float vDriveMid  = apvts.getRawParameterValue("valve_drive_mid")->load();
     const float vDriveSide = apvts.getRawParameterValue("valve_drive_side")->load();
     const float sideLPFreq = apvts.getRawParameterValue("side_lp_freq")->load();
+    const float sideHPFreq = apvts.getRawParameterValue("side_hp_freq")->load();
+    // Side high-pass on the whole side channel (<=25 Hz treated as bypass)
+    const bool  sideHPon   = msMode && sideHPFreq>25.f;
     const float valveHPFreq= apvts.getRawParameterValue("valve_lp")->load();
     // Stereo-mode general valve high-pass (<=25 Hz treated as bypass)
     const bool  valveHPon  = !msMode && valveHPFreq>25.f;
@@ -68,7 +71,12 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
         const float vd  = vDriveArr[ch];
         const bool doTape  = tapeIn  && td>0.001f;
         const bool doValve = valveIn && vd>0.001f;
-        if(!doTape && !doValve) continue;
+        // ch==1 is the side channel in M/S mode
+        const bool isSide  = msMode && ch==1;
+        const bool doSideHP= isSide && sideHPon;
+        // The side HP is a plain filter — it must run even when both
+        // saturation stages are idle on this channel
+        if(!doTape && !doValve && !doSideHP) continue;
 
         const float t01 = td/10.f;
         const float kt  = 1.0f + t01*2.5f;
@@ -86,10 +94,11 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
         float z=tapeLPz[ch], x1=dcX1[ch], y1=dcY1[ch];
 
         // Side LP: one-pole at 4x sample rate (upsampled domain)
-        // ch==1 is the side channel in M/S mode
-        const bool isSide = msMode && ch==1;
         const float sideLPA = isSide
             ? 1.f-std::exp(-(float)(juce::MathConstants<double>::twoPi*sideLPFreq/osr))
+            : 0.f;
+        const float sideHPA = doSideHP
+            ? 1.f-std::exp(-(float)(juce::MathConstants<double>::twoPi*sideHPFreq/osr))
             : 0.f;
 
         // The two shaper stages as order-agnostic steps. Each does exactly what
@@ -139,6 +148,11 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
 
             // Recombine: add back the untouched low portion of the side
             if(isSide) x+=xLow;
+
+            // Side HP: removes side low end entirely (mono low end). Applied
+            // to the whole recombined side so it composes with the LP protect:
+            // below HP corner = gone, HP..LP = clean, above LP = saturated.
+            if(doSideHP){ sideHPz[ch]+=sideHPA*(x-sideHPz[ch]); x-=sideHPz[ch]; }
 
             float y=x-x1+dcR*y1;
             x1=x; y1=y; s[i]=y;

@@ -142,6 +142,7 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     tapeLPz[0]=tapeLPz[1]=0.f;
     sideLPz[0]=sideLPz[1]=0.f;
     sideLPzOut[0]=sideLPzOut[1]=0.f;
+    sideHPz[0]=sideHPz[1]=0.f;
     valveLPz[0]=valveLPz[1]=0.f;
 
     for(auto* s:{&inGain,&outGain,&mbMixSmooth}) s->reset(sampleRate,0.05);

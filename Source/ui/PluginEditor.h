@@ -137,6 +137,9 @@ public:
     /** Low-end flag: driven directly by EQ param state (lf_boost/lf_freq/lc_on),
         not a DSP detector — gated by a toggle on the EQ module header. */
     void setShowLowFlag(bool s){ lowFlagOn=s; repaint(); }
+    /** Display scope in dB (6 = fine view, 12 = wide). Scales the whole
+        vertical axis — grid, curve, and drag sensitivity — view only. */
+    void setDbRange(float r){ if(dbRange!=r){ dbRange=r; repaint(); } }
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
@@ -157,6 +160,8 @@ private:
     int  harshCount=0;
     bool harshOn=false;
     bool lowFlagOn=true;
+    float dbRange=6.f;                    // display scope; full-scale keeps the
+    float fullScaleDb() const { return dbRange*(20.f/12.f); }  // original 20:12 headroom
     juce::Point<float> lfNode,hfNode,n1Node,n2Node,n3Node,n4Node,lcNode;
     int dragging=0;   // 1=lf 2=hf 3..6=notch1..4 7=lowcut
 };
@@ -461,6 +466,7 @@ private:
     juce::ToggleButton eqOnBtn,lcOnBtn,anlBtn;
     juce::TextButton anDetailBtn;    // cycles analyser resolution
     juce::TextButton lowFlagBtn;     // blue "low-end decision" glow on the EQ curve
+    juce::TextButton eqRangeBtn;     // toggles EQ display scope: ±6 dB fine / ±12 dB
     std::unique_ptr<ButtonAt> eqOnAt,lcOnAt;
     bool showAnalyzer=true;
     int  analyzerDetail=1;           // 0=low 1=med 2=high

@@ -48,6 +48,11 @@ public:
 
     std::array<int, kNumModules> chainOrder { 0, 1, 2 };  // EQ -> Comp -> Sat
 
+    // EQ display scope: false = fine ±6 dB view (default), true = ±12 dB.
+    // View/drag sensitivity only — never touches the audio path. Persisted
+    // as an XML attribute alongside chainOrder.
+    std::atomic<bool> eqRange12 { false };
+
     std::atomic<float> inLevelDb  { -90.0f };
     std::atomic<float> inRmsDb    { -90.0f };
     std::atomic<float> outLevelDb { -90.0f };

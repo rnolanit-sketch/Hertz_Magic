@@ -68,6 +68,19 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     lowFlagBtn.onClick=[this]{ eqCurve.setShowLowFlag(lowFlagBtn.getToggleState()); };
     eqModule.addAndMakeVisible(lowFlagBtn);
 
+    // Display scope: ±6 dB fine view (default) / ±12 dB — view + drag feel only
+    eqRangeBtn.setClickingTogglesState(true);
+    eqRangeBtn.setColour(juce::TextButton::buttonColourId,juce::Colours::transparentBlack);
+    eqRangeBtn.setColour(juce::TextButton::buttonOnColourId,juce::Colours::transparentBlack);
+    eqRangeBtn.onClick=[this]{ processor.eqRange12.store(eqRangeBtn.getToggleState()); };
+    {
+        const bool r12=processor.eqRange12.load();
+        eqRangeBtn.setToggleState(r12,juce::dontSendNotification);
+        eqRangeBtn.setButtonText(r12?"12dB":"6dB");
+        eqCurve.setDbRange(r12?12.f:6.f);
+    }
+    eqModule.addAndMakeVisible(eqRangeBtn);
+
     // Genre reference-curve toggles — visual target only, own fixed colours
     auto setupRefBtn=[this](juce::TextButton& b,const juce::String& text,juce::Colour c){
         b.setButtonText(text); b.setClickingTogglesState(true);
@@ -302,6 +315,8 @@ void HertzMagicAudioProcessorEditor::layoutModules()
             popBtn.setBounds(hdr.removeFromRight(36).withHeight(17));
             hdr.removeFromRight(3);
             rockBtn.setBounds(hdr.removeFromRight(36).withHeight(17));
+            hdr.removeFromRight(10);
+            eqRangeBtn.setBounds(hdr.removeFromRight(44).withHeight(17));
             eqCurve.setBounds(inner.removeFromTop(inner.getHeight()-114));
             inner.removeFromTop(6);
             // group widths follow the log frequency axis: lows left, highs right
@@ -484,6 +499,17 @@ void HertzMagicAudioProcessorEditor::timerCallback()
     static const char* wn[]={"3 s","5 s","10 s"};
     loudWinBtn.setButtonText(wn[juce::jlimit(0,2,(int)processor.apvts.getRawParameterValue("loud_win")->load())]);
     loudWinBtn.setColour(juce::TextButton::textColourOffId,acc);
+
+    // EQ display scope follows the persisted processor flag (session load safe)
+    {
+        const bool r12=processor.eqRange12.load();
+        eqCurve.setDbRange(r12?12.f:6.f);
+        if(eqRangeBtn.getToggleState()!=r12)
+            eqRangeBtn.setToggleState(r12,juce::dontSendNotification);
+        eqRangeBtn.setButtonText(r12?"12dB":"6dB");
+        eqRangeBtn.setColour(juce::TextButton::textColourOffId,acc.withAlpha(0.55f));
+        eqRangeBtn.setColour(juce::TextButton::textColourOnId,acc);
+    }
     repaint();
 }
 

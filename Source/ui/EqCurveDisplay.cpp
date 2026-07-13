@@ -24,7 +24,8 @@ static const float kHA[]={5000.f,10000.f,20000.f};
 
 float EqCurveDisplay::freqToX(double f) const {return (float)(getWidth()*std::log(f/20.0)/std::log(1000.0));}
 double EqCurveDisplay::xToFreq(float x) const {return 20.0*std::pow(1000.0,(double)x/(double)getWidth());}
-float EqCurveDisplay::dbToY(float db) const {return getHeight()*0.5f-juce::jlimit(-20.f,20.f,db)*(getHeight()*0.5f)/20.f;}
+float EqCurveDisplay::dbToY(float db) const {const float fs=fullScaleDb();
+    return getHeight()*0.5f-juce::jlimit(-fs,fs,db)*(getHeight()*0.5f)/fs;}
 
 void EqCurveDisplay::drawRefCurve(juce::Graphics& g,const std::pair<double,float>* pts,
     int numPts,juce::Colour col) const
@@ -93,7 +94,7 @@ void EqCurveDisplay::paint(juce::Graphics& g)
     g.setColour(gridCol);
     for(double f:{50.0,100.0,200.0,500.0,1000.0,2000.0,5000.0,10000.0})
         g.drawVerticalLine((int)freqToX(f),0.f,r.getBottom());
-    for(float db:{-12.f,-6.f,6.f,12.f}) g.drawHorizontalLine((int)dbToY(db),0.f,r.getRight());
+    for(float db:{-dbRange,-dbRange*0.5f,dbRange*0.5f,dbRange}) g.drawHorizontalLine((int)dbToY(db),0.f,r.getRight());
     g.setColour(strokeC); g.drawHorizontalLine((int)dbToY(0.f),0.f,r.getRight());
     g.setColour(textC.withAlpha(0.8f)); g.setFont(juce::Font(juce::FontOptions(11.f)));
     static const std::pair<double,const char*> fLbl[]={
@@ -102,7 +103,7 @@ void EqCurveDisplay::paint(juce::Graphics& g)
     for(auto& fl:fLbl)
         g.drawText(fl.second,(int)freqToX(fl.first)+3,getHeight()-14,34,11,juce::Justification::left);
     g.setColour(textC.withAlpha(0.65f)); g.setFont(juce::Font(juce::FontOptions(10.f)));
-    for(float db:{-12.f,-6.f,6.f,12.f})
+    for(float db:{-dbRange,-dbRange*0.5f,dbRange*0.5f,dbRange})
         g.drawText(juce::String((int)db),4,(int)dbToY(db)-11,26,10,juce::Justification::left);
 
     float lfB=apvts.getRawParameterValue("lf_boost")->load();
@@ -246,7 +247,8 @@ void EqCurveDisplay::mouseDown(const juce::MouseEvent& e)
 void EqCurveDisplay::mouseDrag(const juce::MouseEvent& e)
 {
     if(!dragging)return;
-    float db=juce::jlimit(-20.f,20.f,(getHeight()*0.5f-e.position.y)*20.f/(getHeight()*0.5f));
+    const float fs=fullScaleDb();   // drag resolution follows the display scope
+    float db=juce::jlimit(-fs,fs,(getHeight()*0.5f-e.position.y)*fs/(getHeight()*0.5f));
     if(dragging==7){
         const float f=juce::jlimit(10.f,50.f,(float)xToFreq(e.position.x));
         auto range=apvts.getParameterRange("lc_freq");

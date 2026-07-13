@@ -317,6 +317,7 @@ void HertzMagicAudioProcessor::getStateInformation(juce::MemoryBlock& dest)
     juce::String ord;
     for(int i=0;i<kNumModules;++i) ord+=(i?",":"")+juce::String(chainOrder[(size_t)i]);
     xml->setAttribute("chainOrder",ord);
+    xml->setAttribute("eqRange12",eqRange12.load());
     copyXmlToBinary(*xml,dest);
 }
 
@@ -327,6 +328,7 @@ void HertzMagicAudioProcessor::setStateInformation(const void* data,int size)
         auto toks=juce::StringArray::fromTokens(xml->getStringAttribute("chainOrder","0,1,2"),",","");
         for(int i=0;i<kNumModules&&i<toks.size();++i)
             chainOrder[(size_t)i]=juce::jlimit(0,2,toks[i].getIntValue());
+        eqRange12.store(xml->getBoolAttribute("eqRange12",false));
         if(xml->hasTagName(apvts.state.getType()))
             apvts.replaceState(juce::ValueTree::fromXml(*xml));
     }

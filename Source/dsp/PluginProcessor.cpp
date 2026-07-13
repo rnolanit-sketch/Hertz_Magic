@@ -231,9 +231,12 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
     // ---- Gain match (AFTER the final stage): trim the true output down to the
     // pre-processing input loudness so flipping it gives a level-fair A/B. Matches
     // on K-weighted (LUFS) loudness and is attenuate-only, so the processed signal
-    // (louder once limited) is only ever pulled DOWN — the ceiling stays safe. ----
+    // (louder once limited) is only ever pulled DOWN — the ceiling stays safe.
+    // A/B always implies gain-match (that's the whole point of the compare), even
+    // if the separate GM toggle is off — otherwise A/B alone swings wildly in level. ----
+    const bool abOn=apvts.getRawParameterValue(IDs::abDry)->load()>0.5f;
     {
-        const bool gmOn=apvts.getRawParameterValue(IDs::gmOn)->load()>0.5f;
+        const bool gmOn=abOn || apvts.getRawParameterValue(IDs::gmOn)->load()>0.5f;
         const float inLoud =10.f*std::log10(gmInLoudState +1.0e-12f);
         const float outLoud=10.f*std::log10(gmOutLoudState+1.0e-12f);
         const float trimDb=juce::jlimit(-24.f,0.f,inLoud-outLoud);   // attenuate only
@@ -245,9 +248,8 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
     }
 
     // ---- A/B reference: crossfade to the latency-aligned dry input ----
-    // Sits after the gain-match trim, so with GM on the processed side is already
-    // at input loudness and the flip exposes only tone/dynamics, not level.
-    const bool abOn=apvts.getRawParameterValue(IDs::abDry)->load()>0.5f;
+    // Sits after the gain-match trim, so the processed side is already at input
+    // loudness and the flip exposes only tone/dynamics, not level.
     abMix.setTargetValue(abOn?1.f:0.f);
     if(abOn||abMix.isSmoothing())
         for(int i=0;i<n;++i){

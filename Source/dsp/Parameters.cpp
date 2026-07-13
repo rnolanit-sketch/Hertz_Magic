@@ -156,9 +156,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
     layout.add(std::make_unique<P>(juce::ParameterID{"side_lp_freq",1},"Side LP Freq",
         juce::NormalisableRange<float>(200.f,8000.f,1.f,0.35f),2000.f,
         juce::AudioParameterFloatAttributes().withLabel("Hz")));
-    // General valve output low-pass (stereo mode); 20 kHz = effectively off
-    layout.add(std::make_unique<P>(juce::ParameterID{"valve_lp",1},"Valve LP",
-        juce::NormalisableRange<float>(2000.f,20000.f,1.f,0.35f),20000.f,
+    // General valve output high-pass (stereo mode); 20 Hz = effectively off.
+    // ID kept as "valve_lp" (stable API — only add new IDs, never rename).
+    layout.add(std::make_unique<P>(juce::ParameterID{"valve_lp",1},"Valve HP",
+        juce::NormalisableRange<float>(20.f,2000.f,1.f,0.35f),20.f,
         juce::AudioParameterFloatAttributes().withLabel("Hz")));
 
     // ---- Final stage: clipper -> limiter (fixed at chain end) ----

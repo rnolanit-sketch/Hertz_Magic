@@ -130,7 +130,7 @@ private:
     float tapeLPz[2]{};              // tape HF-softening one-pole state
     float sideLPz[2]{};              // side low-pass pre-saturation state (M/S mode)
     float sideLPzOut[2]{};           // output of side LP (what gets saturated)
-    float valveLPz[2]{};             // valve output low-pass state (stereo mode)
+    float valveLPz[2]{};             // valve output high-pass filter state (stereo mode)
     void processSaturation (juce::dsp::AudioBlock<float>&);
 
     // ---- Spectral tame (post-saturation dynamic resonance suppression) ----

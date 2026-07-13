@@ -16,9 +16,9 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
     const float vDriveMid  = apvts.getRawParameterValue("valve_drive_mid")->load();
     const float vDriveSide = apvts.getRawParameterValue("valve_drive_side")->load();
     const float sideLPFreq = apvts.getRawParameterValue("side_lp_freq")->load();
-    const float valveLPFreq= apvts.getRawParameterValue("valve_lp")->load();
-    // Stereo-mode general valve low-pass (>=19.5 kHz treated as bypass)
-    const bool  valveLPon  = !msMode && valveLPFreq<19500.f;
+    const float valveHPFreq= apvts.getRawParameterValue("valve_lp")->load();
+    // Stereo-mode general valve high-pass (<=25 Hz treated as bypass)
+    const bool  valveHPon  = !msMode && valveHPFreq>25.f;
     const bool  swapOrder  = apvts.getRawParameterValue(IDs::satSwap)->load()>0.5f;   // Valve -> Tape
 
     // ---- M/S encode: L/R → Mid/Side ----------------------------------------
@@ -56,8 +56,8 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
     static const float vBiasBase[] = { 0.025f, 0.018f, 0.035f };
     static const float vBiasSlope[]= { 0.008f, 0.006f, 0.012f };
 
-    const float valveLPA = valveLPon
-        ? 1.f-std::exp(-(float)(juce::MathConstants<double>::twoPi*valveLPFreq/osr)) : 0.f;
+    const float valveHPA = valveHPon
+        ? 1.f-std::exp(-(float)(juce::MathConstants<double>::twoPi*valveHPFreq/osr)) : 0.f;
 
     // Harmonic-activity accumulators (how far each stage bends the signal)
     double tapeDiffSq=0.0, tapeSigSq=0.0, valveDiffSq=0.0, valveSigSq=0.0;
@@ -94,7 +94,7 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
 
         // The two shaper stages as order-agnostic steps. Each does exactly what
         // its old inline block did, including harmonic-activity accumulation.
-        // The valve output low-pass stays glued to the valve stage regardless
+        // The valve output high-pass stays glued to the valve stage regardless
         // of order.
         auto applyTape=[&](float x)->float
         {
@@ -115,7 +115,9 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
             x=(std::tanh(kv*(x+bias))-tb)/vNorm;
             valveDiffSq+=(double)(x-xPre)*(x-xPre);
             valveSigSq +=(double)xPre*xPre;
-            if(valveLPon){ valveLPz[ch]+=valveLPA*(x-valveLPz[ch]); x=valveLPz[ch]; }
+            // One-pole low-pass, then subtract it back out to get a high-pass
+            // (same trick as the side-channel filter above).
+            if(valveHPon){ valveLPz[ch]+=valveHPA*(x-valveLPz[ch]); x-=valveLPz[ch]; }
             return x;
         };
 

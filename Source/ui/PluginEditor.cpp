@@ -406,8 +406,9 @@ void HertzMagicAudioProcessorEditor::layoutModules()
                 layoutKnob(tapeDriveSide, tapeCol.removeFromTop(kh).reduced(4,0));
                 layoutKnob(valveDriveMid,  valveCol.removeFromTop(kh).reduced(4,0));
                 layoutKnob(valveDriveSide, valveCol.removeFromTop(kh).reduced(4,0));
-                // Side LP knob centred at the bottom of whichever column has space
-                auto lpArea=tapeCol.withRight(valveCol.getRight()).reduced(4,0);
+                // Side LP knob centred at the bottom, spanning both columns
+                // (union, not withRight — tape may be the right column when swapped)
+                auto lpArea=tapeCol.getUnion(valveCol).reduced(4,0);
                 layoutKnob(sideLPFreq, lpArea.reduced(int(lpArea.getWidth()*0.15f),0));
                 for(auto* k:{&tapeDrive,&tapeChar,&valveDrive,&valveLP})
                     { k->s.setBounds({}); k->l.setBounds({}); }

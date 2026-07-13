@@ -73,10 +73,10 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
         const bool doValve = valveIn && vd>0.001f;
         // ch==1 is the side channel in M/S mode
         const bool isSide  = msMode && ch==1;
-        const bool doSideHP= isSide && sideHPon;
-        // The side HP is a plain filter — it must run even when both
-        // saturation stages are idle on this channel
-        if(!doTape && !doValve && !doSideHP) continue;
+        // Side HP is glued to the valve stage (like the stereo valve HP), so
+        // it's only meaningful while the valve is actually driving this channel
+        const bool doSideHP= isSide && sideHPon && doValve;
+        if(!doTape && !doValve) continue;
 
         const float t01 = td/10.f;
         const float kt  = 1.0f + t01*2.5f;
@@ -127,6 +127,10 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
             // One-pole low-pass, then subtract it back out to get a high-pass
             // (same trick as the side-channel filter above).
             if(valveHPon){ valveLPz[ch]+=valveHPA*(x-valveLPz[ch]); x-=valveLPz[ch]; }
+            // M/S: the side channel's own valve high-pass. Runs BEFORE the
+            // protected lows are recombined, so the SIDE LP band always
+            // survives untouched and only the valve-driven side band is thinned.
+            if(doSideHP){ sideHPz[ch]+=sideHPA*(x-sideHPz[ch]); x-=sideHPz[ch]; }
             return x;
         };
 
@@ -148,11 +152,6 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
 
             // Recombine: add back the untouched low portion of the side
             if(isSide) x+=xLow;
-
-            // Side HP: removes side low end entirely (mono low end). Applied
-            // to the whole recombined side so it composes with the LP protect:
-            // below HP corner = gone, HP..LP = clean, above LP = saturated.
-            if(doSideHP){ sideHPz[ch]+=sideHPA*(x-sideHPz[ch]); x-=sideHPz[ch]; }
 
             float y=x-x1+dcR*y1;
             x1=x; y1=y; s[i]=y;

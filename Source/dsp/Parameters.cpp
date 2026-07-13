@@ -156,8 +156,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
     layout.add(std::make_unique<P>(juce::ParameterID{"side_lp_freq",1},"Side LP Freq",
         juce::NormalisableRange<float>(200.f,8000.f,1.f,0.35f),2000.f,
         juce::AudioParameterFloatAttributes().withLabel("Hz")));
-    // Side high-pass — removes side-channel low end entirely (mono low end),
-    // post-recombine so it composes with the SIDE LP protect; 20 Hz = off
+    // Side high-pass — glued to the valve stage on the side channel (like the
+    // stereo valve HP); the SIDE LP protected lows are never touched; 20 Hz = off
     layout.add(std::make_unique<P>(juce::ParameterID{"side_hp_freq",1},"Side HP Freq",
         juce::NormalisableRange<float>(20.f,2000.f,1.f,0.35f),20.f,
         juce::AudioParameterFloatAttributes().withLabel("Hz")));

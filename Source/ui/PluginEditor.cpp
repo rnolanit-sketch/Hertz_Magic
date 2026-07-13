@@ -131,7 +131,7 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     setupKnob(tapeDrive,"tape_drive","TAPE DRIVE",&satModule);
     setupKnob(tapeChar,"tape_char","CHARACTER",&satModule);
     setupKnob(valveDrive,"valve_drive","VALVE DRIVE",&satModule);
-    setupKnob(valveLP,"valve_lp","VALVE LP",&satModule);
+    setupKnob(valveLP,"valve_lp","VALVE HP",&satModule);
     setupKnob(tapeDriveMid, "tape_drive_mid",  "MID DRIVE",&satModule);
     setupKnob(tapeDriveSide,"tape_drive_side", "SIDE DRIVE",&satModule);
     setupKnob(valveDriveMid, "valve_drive_mid", "MID DRIVE",&satModule);
@@ -475,12 +475,16 @@ void HertzMagicAudioProcessorEditor::timerCallback()
     {
         const bool swp=processor.apvts.getRawParameterValue("sat_swap")->load()>0.5f;
         satTapeLbl.setText (swp?"TAPE 2":"TAPE 1",  juce::dontSendNotification);
-        satValveLbl.setText(swp?"VALVE 1":"VALVE 2",juce::dontSendNotification);
+        // short caption — the tube button now shares the valve header row
+        satValveLbl.setText(swp?"V 1":"V 2",juce::dontSendNotification);
         for(auto* l:{&satTapeLbl,&satValveLbl})
             l->setColour(juce::Label::textColourId,acc.withAlpha(0.85f));
         static const char* tn[]={"12AX7","12AT7","6072A"};
-        valveTubeBtn.setButtonText(tn[juce::jlimit(0,2,
-            (int)processor.apvts.getRawParameterValue("valve_type")->load())]);
+        static const char* gn[]={"ECC83","ECC81","6072A"};   // European names on the glass
+        const int vt=juce::jlimit(0,2,
+            (int)processor.apvts.getRawParameterValue("valve_type")->load());
+        valveTubeBtn.setButtonText(tn[vt]);
+        valve.setTube(gn[vt]);
         valveTubeBtn.setColour(juce::TextButton::textColourOffId,acc);
     }
 
@@ -747,7 +751,12 @@ void HertzMagicAudioProcessorEditor::paintCommonOverlays(juce::Graphics& g)
         chain+=juce::String("CLIP/LIM")+dot+"OUT";
         g.setColour(txtDim2);
         g.setFont(juce::Font(juce::FontOptions(11.f,juce::Font::bold)));
-        g.drawText(chain,headerArea.withTrimmedRight(110),juce::Justification::centred);
+        // Zone between the logo and the preset bar — see kHeaderLogoW/kHeaderSkinW/
+        // kHeaderPresetW; must stay in sync with the preset bar's bounds in resized().
+        auto hdr=headerArea;
+        hdr.removeFromLeft(kHeaderLogoW);
+        hdr.removeFromRight(kHeaderSkinW+kHeaderPresetW);
+        g.drawText(chain,hdr,juce::Justification::centred);
     }
 
     // Module titles, drag hints, stage captions, and the EQ knob-group
@@ -842,7 +851,12 @@ void HertzMagicAudioProcessorEditor::resized()
     auto r=getLocalBounds();
     headerArea=r.removeFromTop(52);
     skinToggleBtn.setBounds(headerArea.withTrimmedRight(8).removeFromRight(82).withSizeKeepingCentre(80,22));
-    presetBar.setBounds(headerArea.withSizeKeepingCentre(360,24));
+    {
+        auto hdr=headerArea;
+        hdr.removeFromLeft(kHeaderLogoW);
+        hdr.removeFromRight(kHeaderSkinW);
+        presetBar.setBounds(hdr.removeFromRight(kHeaderPresetW).withSizeKeepingCentre(280,24));
+    }
     r.removeFromBottom(14);
 
     meterLeft=r.removeFromLeft(kInRailW).reduced(0,4);

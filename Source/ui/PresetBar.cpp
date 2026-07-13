@@ -12,6 +12,14 @@
 
 static const char* kPresetExt = ".hmpreset";
 
+void PresetCombo::mouseDown(const juce::MouseEvent& e)
+{
+    // Clearing here (not in onChange) means whatever gets picked next — even
+    // the item that was already showing — registers as a real ID change.
+    setSelectedId(0,juce::dontSendNotification);
+    juce::ComboBox::mouseDown(e);
+}
+
 juce::File PresetBar::presetDir()
 {
    #if JUCE_MAC
@@ -105,6 +113,12 @@ void PresetBar::savePreset()
     aw->addTextEditor("name",sel,{},false);
     aw->addButton("Save",1,juce::KeyPress(juce::KeyPress::returnKey));
     aw->addButton("Cancel",0,juce::KeyPress(juce::KeyPress::escapeKey));
+    // enterModalState alone never shows the window — it must reach the
+    // desktop first, and above the (floating) plugin window
+    aw->setAlwaysOnTop(true);
+    aw->centreAroundComponent(getTopLevelComponent(),aw->getWidth(),aw->getHeight());
+    aw->setVisible(true);
+    aw->toFront(true);
     aw->enterModalState(true,juce::ModalCallbackFunction::create([this,aw](int r)
     {
         if(r==1)

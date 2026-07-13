@@ -231,10 +231,12 @@ class ValveDisplay : public juce::Component
 {
 public:
     void setHeat(float h,juce::Colour a){heat=h;accent=a;repaint();}
+    void setTube(const juce::String& n){ if(tubeName!=n){ tubeName=n; repaint(); } }
     void paint(juce::Graphics&) override;
 private:
     float heat=0.f;
     juce::Colour accent{HertzColours::accentGreen};
+    juce::String tubeName{"ECC83"};   // caption follows the valve_type selector
 };
 
 //==============================================================================
@@ -341,6 +343,17 @@ private:
 };
 
 //==============================================================================
+/** ComboBox that always fires onChange when an item is picked, even if it's
+    the one already selected — clearing the selection just before the popup
+    opens means re-picking the same preset always re-registers as a change,
+    so selecting a preset always reverts to its saved state. */
+class PresetCombo : public juce::ComboBox
+{
+public:
+    void mouseDown(const juce::MouseEvent&) override;
+};
+
+//==============================================================================
 /** Header preset strip: combo of user presets (plus a built-in "Default"
     factory entry), SAVE (name prompt) and DEL. Presets are single XML files
     in a per-user folder, so a "preset pack" is just a shareable folder. */
@@ -358,7 +371,7 @@ private:
     void savePreset();
     void deletePreset();
     HertzMagicAudioProcessor& proc;
-    juce::ComboBox box;
+    PresetCombo box;
     juce::TextButton saveBtn{"SAVE"},delBtn{"DEL"};
     juce::StringArray names;            // combo order -> preset file basenames
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PresetBar)
@@ -553,6 +566,11 @@ private:
 
     static constexpr int kModuleW=330, kModuleH=380, kEqH=280, kGap=10,
                          kFinalW=212, kSpectralW=210, kInRailW=74;
+
+    // Header row zones (left to right): logo | chain-order text | preset bar | skin button.
+    // Shared between resized() (preset bar bounds) and paintCommonOverlays() (chain
+    // text bounds) so the two never claim the same pixels.
+    static constexpr int kHeaderLogoW=310, kHeaderSkinW=100, kHeaderPresetW=300;
 
     void applySkinToAll();
     void paintDigitalBackground(juce::Graphics&);

@@ -112,7 +112,7 @@ void ValveDisplay::paint(juce::Graphics& g)
         float px=tube.getX()+tubeW*fx;
         g.drawLine(px,bB,px,bB+tubeH*0.07f,2.5f);}
     g.setColour(textDim); g.setFont(juce::Font(juce::FontOptions(10.5f)));
-    g.drawText("ECC83",tube.withY(bB+tubeH*0.08f).withHeight(13.f).expanded(20.f,0.f),
+    g.drawText(tubeName,tube.withY(bB+tubeH*0.08f).withHeight(13.f).expanded(20.f,0.f),
         juce::Justification::centred);
 }
 

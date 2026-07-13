@@ -35,8 +35,11 @@ void HertzMagicAudioProcessor::processMultibandComp(juce::AudioBuffer<float>& bu
     const int numCh=buf.getNumChannels(), n=buf.getNumSamples();
     updateCrossoverCoeffs(currentSampleRate);
     for(int i=0;i<3;++i) bandBuf[i].setSize(numCh,n,false,false,true);
+    // Dry reference for the mix blend is accumulated from the UNCOMPRESSED bands
+    // below (not the pre-split input) so it carries the same crossover phase
+    // rotation as the wet path — blending against the raw input combs/cancels.
     mbDryBuf.setSize(numCh,n,false,false,true);
-    for(int ch=0;ch<numCh;++ch) mbDryBuf.copyFrom(ch,0,buf,ch,0,n);
+    mbDryBuf.clear();
 
     for(int ch=0;ch<numCh&&ch<2;++ch)
     {
@@ -60,6 +63,10 @@ void HertzMagicAudioProcessor::processMultibandComp(juce::AudioBuffer<float>& bu
         const bool byp   = apvts.getRawParameterValue(IDs::bandByp +bs)->load()>0.5f;
         const bool solo  = apvts.getRawParameterValue(IDs::bandSolo+bs)->load()>0.5f;
         if(anySolo&&!solo){ bandBuf[b].clear(); bandGrDb[b].store(0.f); continue; }
+
+        // Capture this band pre-compression into the phase-matched dry sum
+        // (after the solo gate, so solo still isolates at any mix setting)
+        for(int ch=0;ch<numCh;++ch) mbDryBuf.addFrom(ch,0,bandBuf[b],ch,0,n);
 
         const float thDb =apvts.getRawParameterValue(IDs::thresh +bs)->load();
         const float rat  =apvts.getRawParameterValue(IDs::ratio  +bs)->load();

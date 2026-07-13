@@ -8,6 +8,7 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
     const int   tChar    = (int)apvts.getRawParameterValue(IDs::tapeChar)->load();
     const bool  valveIn  = apvts.getRawParameterValue(IDs::valveOn)->load()>0.5f;
     const float vDrive   = apvts.getRawParameterValue(IDs::valveDrive)->load();
+    const int   vType    = juce::jlimit(0,2,(int)apvts.getRawParameterValue(IDs::valveType)->load());
     const bool  msMode   = apvts.getRawParameterValue("sat_ms")->load()>0.5f
                            && block.getNumChannels()>=2;
     const float tDriveMid  = apvts.getRawParameterValue("tape_drive_mid")->load();
@@ -44,6 +45,17 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
     static const float charLPHi[] = { 19000.f, 16000.f, 12500.f };
     static const float charLPLo[] = { 16000.f, 13000.f, 10000.f };
 
+    // Valve tube models — biased-tanh coefficients per type.
+    // [0] 12AX7: the original curve (high gain, index 0 = unchanged sound)
+    // [1] 12AT7/ECC81: medium gain, tighter drive slope, less bias asymmetry
+    //     — cleaner, fewer even harmonics, harder into odd-order at the top
+    // [2] 6072A/12AY7: low gain, gentle slope, more bias asymmetry
+    //     — warmer, even-harmonic-rich, saturates soft and early
+    static const float vKvBase[]   = { 0.8f,   0.7f,   0.55f  };
+    static const float vKvSlope[]  = { 0.45f,  0.38f,  0.30f  };
+    static const float vBiasBase[] = { 0.025f, 0.018f, 0.035f };
+    static const float vBiasSlope[]= { 0.008f, 0.006f, 0.012f };
+
     const float valveLPA = valveLPon
         ? 1.f-std::exp(-(float)(juce::MathConstants<double>::twoPi*valveLPFreq/osr)) : 0.f;
 
@@ -65,8 +77,8 @@ void HertzMagicAudioProcessor::processSaturation(juce::dsp::AudioBlock<float>& b
                                            charLPLo[juce::jlimit(0,2,tChar)]);
         const float lpA  = 1.f-std::exp(-(float)(juce::MathConstants<double>::twoPi*lpF/osr));
 
-        const float kv   = 0.8f + vd*0.45f;
-        const float bias = 0.025f + vd*0.008f;
+        const float kv   = vKvBase[vType]   + vd*vKvSlope[vType];
+        const float bias = vBiasBase[vType] + vd*vBiasSlope[vType];
         const float tb   = std::tanh(kv*bias);
         const float vNorm= kv*(1.f-tb*tb);
 

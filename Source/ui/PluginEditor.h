@@ -509,6 +509,7 @@ private:
     std::unique_ptr<ButtonAt> tapeOnAt,valveOnAt,satMsAt,satSwapAt;
     DriveMeter tapeMeter{"TAPE"},valveMeter{"VALVE"};
     juce::Label satTapeLbl,satValveLbl;   // stage captions (children of satModule)
+    juce::TextButton valveTubeBtn;        // cycles tube model 12AX7 / 12AT7 / 6072A
 
     // Spectral tame (fixed, post-saturation)
     SpectralTameDisplay ssDisplay;

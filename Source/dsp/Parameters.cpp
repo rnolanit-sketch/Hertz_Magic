@@ -134,6 +134,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
     layout.add(std::make_unique<P>(juce::ParameterID{IDs::valveDrive,1},"Valve Drive",
         juce::NormalisableRange<float>(0.f,10.f,0.01f,0.5f),2.f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction(pct)));
+    // Tube model — 12AX7 is the original curve, so index 0 = existing sound
+    layout.add(std::make_unique<Pc>(juce::ParameterID{IDs::valveType,1},"Valve Tube",
+        juce::StringArray{"12AX7","12AT7","6072A"},0));
     layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::satSwap,1},"Sat Order Swap",false));
 
     // ---- M/S mode for saturation ----

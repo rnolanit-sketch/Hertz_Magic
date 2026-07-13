@@ -23,6 +23,7 @@ namespace IDs
         release="release_", makeup="makeup_", bandSolo="solo_", bandByp="byp_";
     static const juce::String tapeOn="tape_on", tapeDrive="tape_drive", tapeChar="tape_char";
     static const juce::String valveOn="valve_on", valveDrive="valve_drive";
+    static const juce::String valveType="valve_type";   // tube model: 12AX7 / 12AT7 / 6072A
     static const juce::String satSwap="sat_swap";   // true = Valve -> Tape order
     static const juce::String n1Freq="n1_freq", n1Depth="n1_depth", n1Q="n1_q";
     static const juce::String n2Freq="n2_freq", n2Depth="n2_depth", n2Q="n2_q";

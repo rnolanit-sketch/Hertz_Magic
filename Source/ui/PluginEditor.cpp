@@ -138,6 +138,14 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
     satMsBtn.onClick=[this]{ layoutModules(); repaint(); };
     setupToggle(satSwapBtn,satSwapAt,"sat_swap","SWAP",&satModule);
     satSwapBtn.onClick=[this]{ layoutModules(); repaint(); };
+    // Tube model: cycles 12AX7 -> 12AT7 -> 6072A (same pattern as loudWinBtn)
+    valveTubeBtn.setColour(juce::TextButton::buttonColourId,juce::Colours::transparentBlack);
+    valveTubeBtn.setColour(juce::TextButton::buttonOnColourId,juce::Colours::transparentBlack);
+    valveTubeBtn.onClick=[this]{
+        auto* p=processor.apvts.getParameter("valve_type");
+        if(p){ int v=(int)processor.apvts.getRawParameterValue("valve_type")->load();
+               p->setValueNotifyingHost((float)((v+1)%3)/2.f); } };
+    satModule.addAndMakeVisible(valveTubeBtn);
     satModule.addAndMakeVisible(tapeMeter);
     satModule.addAndMakeVisible(valveMeter);
 
@@ -389,6 +397,8 @@ void HertzMagicAudioProcessorEditor::layoutModules()
             auto valveHdr=valveCol.removeFromTop(18);
             valveOnBtn.setBounds(valveHdr.removeFromLeft(36).withHeight(16));
             satMsBtn.setBounds(valveHdr.removeFromRight(44).withHeight(16));
+            valveHdr.removeFromRight(2);
+            valveTubeBtn.setBounds(valveHdr.removeFromRight(48).withHeight(16));
             satValveLbl.setBounds(valveHdr.withHeight(16).withTrimmedLeft(4));
 
             // Graphics + per-stage extremity meter
@@ -463,6 +473,10 @@ void HertzMagicAudioProcessorEditor::timerCallback()
         satValveLbl.setText(swp?"VALVE 1":"VALVE 2",juce::dontSendNotification);
         for(auto* l:{&satTapeLbl,&satValveLbl})
             l->setColour(juce::Label::textColourId,acc.withAlpha(0.85f));
+        static const char* tn[]={"12AX7","12AT7","6072A"};
+        valveTubeBtn.setButtonText(tn[juce::jlimit(0,2,
+            (int)processor.apvts.getRawParameterValue("valve_type")->load())]);
+        valveTubeBtn.setColour(juce::TextButton::textColourOffId,acc);
     }
 
     const juce::Colour bcs[]={bandLow,bandMid,bandHigh};

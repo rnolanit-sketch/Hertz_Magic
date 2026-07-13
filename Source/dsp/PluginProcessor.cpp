@@ -80,6 +80,10 @@ void HertzMagicAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlo
     gmGain.setCurrentAndTargetValue(1.0f);
     gmInLoudState=0.f; gmOutLoudState=0.f;
 
+    // A/B reference: quick click-free crossfade between processed and dry
+    abMix.reset(sampleRate,0.02);
+    abMix.setCurrentAndTargetValue(0.f);
+
     // Loudness: maintain 3/5/10 s windows together in one 10 s ring
     loudLen3 =juce::jmax(1,(int)std::lround(3.0 *sampleRate));
     loudLen5 =juce::jmax(1,(int)std::lround(5.0 *sampleRate));
@@ -240,8 +244,23 @@ void HertzMagicAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juc
         for(int ch=0;ch<numCh;++ch) buffer.getWritePointer(ch)[i]*=gm;
     }
 
+    // ---- A/B reference: crossfade to the latency-aligned dry input ----
+    // Sits after the gain-match trim, so with GM on the processed side is already
+    // at input loudness and the flip exposes only tone/dynamics, not level.
+    const bool abOn=apvts.getRawParameterValue(IDs::abDry)->load()>0.5f;
+    abMix.setTargetValue(abOn?1.f:0.f);
+    if(abOn||abMix.isSmoothing())
+        for(int i=0;i<n;++i){
+            const float m=abMix.getNextValue();
+            for(int ch=0;ch<numCh;++ch){
+                auto& s=buffer.getWritePointer(ch)[i];
+                s+=m*(deltaBuffer.getReadPointer(ch)[i]-s);
+            }
+        }
+
     // ---- Delta monitor: hear processed minus dry (latency-aligned) ----
-    if(apvts.getRawParameterValue("delta_on")->load()>0.5f
+    if(!abOn
+       && apvts.getRawParameterValue("delta_on")->load()>0.5f
        && apvts.getRawParameterValue("poke_solo")->load()<0.5f)
         for(int ch=0;ch<numCh;++ch)
         {

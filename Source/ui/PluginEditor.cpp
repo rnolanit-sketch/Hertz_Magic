@@ -184,6 +184,7 @@ HertzMagicAudioProcessorEditor::HertzMagicAudioProcessorEditor(HertzMagicAudioPr
                p->setValueNotifyingHost((float)((v+1)%3)/2.f); } };
     addAndMakeVisible(loudWinBtn);
     setupToggle(gmOnBtn,gmOnAt,"gm_on","GM",this);
+    setupToggle(abBtn,abAt,"ab_dry","A/B",this);
 
     for(auto* m:modules)
         m->onDragEnd=[this](ModulePanel* d,juce::Point<int> pos){onModuleDrop(d,pos);};
@@ -881,6 +882,8 @@ void HertzMagicAudioProcessorEditor::resized()
         loudWinBtn.setBounds(hdrRow.removeFromRight(44).withHeight(15));
         hdrRow.removeFromRight(4);
         gmOnBtn.setBounds(hdrRow.removeFromRight(34).withHeight(15));
+        hdrRow.removeFromRight(4);
+        abBtn.setBounds(hdrRow.removeFromRight(38).withHeight(15));
         auto row1=lb.removeFromTop(lb.getHeight()/2);
         rmsLabel.setBounds(row1.withTrimmedLeft(56));
         lufsLabel.setBounds(lb.withTrimmedLeft(56));

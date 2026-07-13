@@ -204,6 +204,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout HertzMagicAudioProcessor::cr
             kSSFreqDefaults[b],juce::AudioParameterFloatAttributes().withLabel("Hz")));
 
     layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::gmOn,1},"Gain Match",false));
+    // A/B reference: hear the latency-aligned dry input at the plugin output.
+    // With Gain Match on, flipping this compares tone/dynamics at equal loudness.
+    layout.add(std::make_unique<Pb>(juce::ParameterID{IDs::abDry,1},"A/B Reference",false));
 
     // Loudness averaging window (EBU R128 short-term is 3 s; 5/10 s are slower)
     layout.add(std::make_unique<Pc>(juce::ParameterID{IDs::loudWin,1},"Loudness Window",

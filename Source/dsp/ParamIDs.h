@@ -36,6 +36,7 @@ namespace IDs
     static const juce::String ssFreq="ss_freq";
     static const juce::String loudWin="loud_win";
     static const juce::String gmOn="gm_on";
+    static const juce::String abDry="ab_dry";   // A/B: monitor latency-aligned dry input
 }
 
 // Spectral tame band centre defaults — the "digital tops" region

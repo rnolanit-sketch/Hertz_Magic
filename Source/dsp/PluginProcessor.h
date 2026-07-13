@@ -160,6 +160,7 @@ private:
     juce::SmoothedValue<float> gmGain;   // 1.0 = no compensation
     float gmInLoudState  = 0.0f;         // ~400 ms K-weighted, channel-summed MS of trimmed input
     float gmOutLoudState = 0.0f;         // ~400 ms K-weighted, channel-summed MS of final output (pre-gm)
+    juce::SmoothedValue<float> abMix;    // A/B reference crossfade: 0 = processed, 1 = dry
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HertzMagicAudioProcessor)
 };

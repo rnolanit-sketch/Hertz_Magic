@@ -492,6 +492,7 @@ private:
     juce::Label rmsLabel,lufsLabel;
     juce::TextButton loudWinBtn;     // cycles 3 / 5 / 10 s loudness window
     juce::ToggleButton gmOnBtn; std::unique_ptr<ButtonAt> gmOnAt;   // gain-match A/B
+    juce::ToggleButton abBtn;   std::unique_ptr<ButtonAt> abAt;     // A/B dry reference
 
     // Saturation: tape + valve
     TapeDisplay tape;
